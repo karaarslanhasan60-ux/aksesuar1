@@ -1,0 +1,2578 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aksesuar Satış ve Stok Yönetim Sistemi v4.61</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Firebase SDK (v8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        .compact-table th, .compact-table td {
+            padding: 6px 8px !important;
+            font-size: 11px !important;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-12">
+
+    <!-- SİSTEME GİRİŞ EKRANI (LOGIN MODAL) -->
+    <div id="loginScreen" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full border border-slate-100">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">
+                    🔐
+                </div>
+                <h2 class="text-2xl font-black text-indigo-950 tracking-tight">Giriş Yapın</h2>
+                <p class="text-xs text-slate-500 mt-1">Aksesuar Satış ve Stok Yönetim Sistemi v4.61</p>
+            </div>
+            
+            <form onsubmit="handleUserLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">KULLANICI ADI</label>
+                    <input type="text" id="loginUserInput" list="userListOptions" placeholder="Kullanıcı adınızı yazın veya seçin..." required class="w-full p-3 border border-slate-300 rounded-xl text-xs font-semibold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500">
+                    <datalist id="userListOptions"></datalist>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">ŞİFRE</label>
+                    <input type="password" id="loginPasswordInput" placeholder="••••••••" required class="w-full p-3 border border-slate-300 rounded-xl text-xs font-semibold bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-bold py-3.5 px-4 rounded-xl text-xs shadow-lg transition duration-200">
+                    Sisteme Giriş Yap 🚀
+                </button>
+            </form>
+            <div id="loginErrorMsg" class="hidden mt-4 p-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs text-center font-semibold"></div>
+        </div>
+    </div>
+
+    <!-- ANA UYGULAMA İÇERİĞİ -->
+    <div id="mainApp" class="max-w-[100rem] mx-auto p-3 md:p-5 hidden">
+        
+        <!-- Header -->
+        <header class="bg-gradient-to-r from-indigo-700 to-indigo-900 text-white p-5 rounded-2xl shadow-lg mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-xl font-bold tracking-wide">Aksesuar Satış ve Stok Yönetim Sistemi v4.61</h1>
+                <p class="text-indigo-200 text-xs mt-0.5">Akıllı Sipariş Analizi, Sessiz Yerel Yedekleme & GSPN Entegrasyonu</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="bg-indigo-800/80 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 border border-indigo-600">
+                    <span>👤 <b id="currentUserName">Giriş Yapılmadı</b> (<span id="currentUserRole" class="text-amber-300 font-bold">-</span>)</span>
+                    <button onclick="changeOwnPassword()" class="bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1">
+                        🔑 Şifre Değiştir
+                    </button>
+                    <button onclick="logoutUser()" class="bg-rose-600 hover:bg-rose-500 text-white px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1">
+                        🔒 Çıkış Yap
+                    </button>
+                </div>
+
+                <span id="cloudStatus" class="bg-amber-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1">
+                    ☁️ Bulut: Bağlanıyor...
+                </span>
+                <button onclick="triggerLocalBackup()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                    💾 Bilgisayara Yedek İndir
+                </button>
+                <button onclick="resetAllData()" class="admin-only bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                    🗑️ Günlük Verileri Sıfırla
+                </button>
+                <button onclick="sendOutlookEmail()" class="bg-sky-600 hover:bg-sky-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                    📧 Outlook Mail & Excel
+                </button>
+                <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-2">
+                    📥 Düşüm Listesini İndir
+                </button>
+            </div>
+        </header>
+
+        <!-- Canlı Güncelleme Bildirim Banneri -->
+        <div id="updateBanner" class="hidden mb-4 p-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-xs shadow-lg flex items-center justify-between">
+            <span id="updateMessage">🚀 Sistemde yeni bir güncelleme mevcut!</span>
+            <button onclick="applyAppUpdate()" class="bg-white text-orange-800 hover:bg-orange-50 px-4 py-1.5 rounded-lg font-bold shadow transition">
+                🔄 Programı Güncelle & Yenile
+            </button>
+        </div>
+
+        <!-- Toast Bildirimi -->
+        <div id="statusToast" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold border flex items-center justify-between transition-all duration-300">
+            <span id="toastMessage"></span>
+            <button onclick="hideToast()" class="text-slate-500 hover:text-slate-800 ml-4 font-bold">✕</button>
+        </div>
+
+        <!-- Sekmeler -->
+        <div class="flex border-b border-slate-200 mb-4 gap-1 overflow-x-auto">
+            <button onclick="switchTab('tab-gspn')" id="btn-gspn" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-indigo-600 text-indigo-600 whitespace-nowrap">1. GSPN</button>
+            <button onclick="switchTab('tab-kodlar')" id="btn-kodlar" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">2. AKSESUAR KODLARI</button>
+            <button onclick="switchTab('tab-teknisyen')" id="btn-teknisyen" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">3. TEKNİSYENLER</button>
+            <button onclick="switchTab('tab-dusum')" id="btn-dusum" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">4. AKSESUARDÜSÜM (Günlük)</button>
+            <button onclick="switchTab('tab-akilli-siparis')" id="btn-akilli-siparis" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">📦 5. AKILLI SİPARİŞ & STOK ANALİZİ</button>
+            <button onclick="switchTab('tab-arsiv')" id="btn-arsiv" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">📚 7. ARŞİV & KLASÖR</button>
+            <button onclick="switchTab('tab-whatsapp')" id="btn-whatsapp" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">WHATSAPP</button>
+            <button onclick="switchTab('tab-mutabakat')" id="btn-mutabakat" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">🔄 ÇAPRAZ KONTROL</button>
+            <button onclick="switchTab('tab-kullanicilar')" id="btn-kullanicilar" class="tab-btn px-3 py-2.5 font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-indigo-600 whitespace-nowrap">👥 KULLANICILAR</button>
+        </div>
+
+        <!-- 1. GSPN Sekmesi -->
+        <div id="tab-gspn" class="tab-content bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">GSPN Sayfası Veri Yükleme</h2>
+                    <p class="text-xs text-slate-500 mb-2">Servis siparişleri içeren ana Excel dosyaları ve Arka Plan GSPN Stok Dosyası.</p>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <input type="file" id="fileGspn" accept=".xlsx, .xls, .csv" multiple class="block text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" onchange="loadMultipleExcelFiles(this, 'gspn')">
+                        
+                        <label class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow cursor-pointer transition flex items-center gap-1">
+                            📦 GSPN Stok Dosyasını Arka Plana Yükle
+                            <input type="file" id="fileGspnStokUpload" accept=".xlsx, .xls, .csv" class="hidden" onchange="loadBackgroundGspnStock(this)">
+                        </label>
+                        <button onclick="downloadExampleTemplate('gspn')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                            📥 Örnek Şablon İndir
+                        </button>
+                        <span id="stokStatusText" class="text-xs font-semibold text-slate-400">Stok dosyası yüklenmedi</span>
+                    </div>
+                </div>
+                <div class="w-full md:w-64">
+                    <input type="text" id="searchGspn" onkeyup="filterTable('gspn')" placeholder="🔍 GSPN verilerinde ara..." class="w-full p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[420px] border border-slate-200 rounded-xl">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableGspn">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm"><tr id="headerGspn"><th class="p-2 border">Durum</th></tr></thead>
+                    <tbody id="bodyGspn"><tr><td class="p-4 text-center text-slate-400">Veri yüklenmedi.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 2. AKSESUAR KODLARI Sekmesi -->
+        <div id="tab-kodlar" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="admin-only bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <h3 class="text-xs font-bold text-indigo-900 mb-2">➕ Yeni Aksesuar Kodu Ekle</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+                    <input type="text" id="newBepa" placeholder="GSPN Kodu Bepa" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <input type="text" id="newNova" placeholder="GSPN Kodu Nov" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <input type="text" id="newCts" placeholder="CTS Kodu" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <input type="text" id="newTanim" placeholder="Tanım / Açıklama" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <button onclick="addNewAksesuarKodu()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow transition">Kataloğa Ekle</button>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">AKSESUAR KODLARI Kataloğu</h2>
+                    <p class="text-xs text-slate-500">BEPA / NOVA / CTS kodları ve Tanım kütüphanesi.</p>
+                </div>
+                <div class="w-full md:w-64">
+                    <input type="text" id="searchKodlar" onkeyup="filterTable('kodlar')" placeholder="🔍 Katalogda ara..." class="w-full p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[380px] border border-slate-200 rounded-xl">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableKodlar">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm"><tr id="headerKodlar"><th class="p-2 border">Durum</th></tr></thead>
+                    <tbody id="bodyKodlar"><tr><td class="p-4 text-center text-slate-400">Yükleniyor...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. TEKNİSYENLER Sekmesi -->
+        <div id="tab-teknisyen" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="admin-only bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <h3 class="text-xs font-bold text-indigo-900 mb-2">👤 Yeni Teknisyen / Personel Ekle</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                    <input type="text" id="newTeknisyenName" placeholder="Teknisyen Adı (örn: BE AND ALİ YILMAZ)" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <input type="text" id="newShipCode" placeholder="Ship To Code (10 hane)" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <input type="text" id="newSoldCode" placeholder="Sold To Code" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    <button onclick="addNewTeknisyenRecord()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow transition">Teknisyen Ekle</button>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">Teknisyen Listesi</h2>
+                    <p class="text-xs text-slate-500">Kayıtlı teknisyenler ve şube kodları.</p>
+                </div>
+                <div class="w-full md:w-64">
+                    <input type="text" id="searchTeknisyen" onkeyup="filterTable('teknisyen')" placeholder="🔍 Teknisyenlerde ara..." class="w-full p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[380px] border border-slate-200 rounded-xl">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableTeknisyen">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm"><tr id="headerTeknisyen"><th class="p-2 border">Durum</th></tr></thead>
+                    <tbody id="bodyTeknisyen"><tr><td class="p-4 text-center text-slate-400">Yükleniyor...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 4. AKSESUARDÜSÜM Sekmesi (GÜNLÜK YÖNETİM) -->
+        <div id="tab-dusum" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-slate-50 p-3.5 rounded-xl border">
+                <div class="flex flex-wrap items-center gap-2">
+                    <div>
+                        <h2 class="text-md font-bold text-indigo-900">AKSESUARDÜSÜM Günlük Liste</h2>
+                        <p class="text-xs text-slate-500">Toplam Kayıt: <span id="recordCount" class="font-bold text-indigo-600">0</span></p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow cursor-pointer transition flex items-center gap-1">
+                            📂 Eski Liste Yükle (.xlsx)
+                            <input type="file" id="fileEskiDusum" accept=".xlsx, .xls, .csv" class="hidden" onchange="loadOldDusumFile(this)">
+                        </label>
+                        <button onclick="addNewDusumRow()" class="admin-only bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                            ➕ Satır Ekle
+                        </button>
+                        <button onclick="downloadExampleTemplate('dusum')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                            📥 Örnek Şablon
+                        </button>
+                        
+                        <!-- Seçilenleri Klasöre Aktarma Paneli -->
+                        <div class="flex items-center gap-1 bg-purple-50 p-1 rounded-xl border border-purple-200">
+                            <select id="targetArchiveFolder" class="p-1.5 border border-purple-300 rounded-lg text-xs bg-white text-purple-900 font-semibold">
+                                <option value="Kasım 2026">Kasım 2026</option>
+                                <option value="Aralık 2026">Aralık 2026</option>
+                                <option value="Ocak 2027">Ocak 2027</option>
+                                <option value="Şubat 2027">Şubat 2027</option>
+                            </select>
+                            <button onclick="archiveSelectedDailyRowsToFolder()" class="admin-only bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-1 whitespace-nowrap">
+                                📥 Seçilenleri Klasöre At
+                            </button>
+                        </div>
+
+                        <button onclick="sendOutlookEmail()" class="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                            📧 Mail
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2 items-center w-full lg:w-auto">
+                    <select id="filterTeknisyen" onchange="filterDusumTable()" class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                        <option value="">👤 Tüm Teknisyenler</option>
+                    </select>
+                    <input type="text" id="searchDusum" onkeyup="filterDusumTable()" placeholder="🔍 Listede ara..." class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 w-40">
+                    <button onclick="runSingleClickWorkflow()" class="admin-only bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-semibold shadow transition flex items-center gap-1">
+                        ⚡ Tek Tuşla Eşleştir
+                    </button>
+                </div>
+            </div>
+
+            <!-- TOPLAM DÜŞÜLEN AKSESUAR ÖZET KUTULARI -->
+            <div class="bg-indigo-50/60 border border-indigo-100 p-3 rounded-xl">
+                <h3 class="font-bold text-indigo-900 text-xs mb-1.5 flex items-center justify-between">
+                    📊 Günlük Toplam Düşülen Aksesuar Özeti
+                    <button onclick="toggleSummaryView()" class="text-xs text-indigo-600 hover:underline font-semibold">Genişlet / Gizle</button>
+                </h3>
+                <div id="summaryContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-36 overflow-y-auto text-xs">
+                    <span class="text-slate-400 italic">Henüz özet hesaplanmadı.</span>
+                </div>
+            </div>
+
+            <!-- DÜŞÜM TABLOSU -->
+            <div class="overflow-x-auto max-h-[460px] border border-slate-200 rounded-xl bg-white">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableDusum" style="table-layout: auto;">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm z-10">
+                        <tr>
+                            <th class="p-2 border w-8 text-center"><input type="checkbox" id="selectAllDusum" onclick="toggleSelectAllDusum(this)"></th>
+                            <th class="p-2 border">TEKNİSYEN</th>
+                            <th class="p-2 border">SUBE</th>
+                            <th class="p-2 border">PART NO</th>
+                            <th class="p-2 border text-center">ADET</th>
+                            <th class="p-2 border">İS EMRİ</th>
+                            <th class="p-2 border">CTS KODU</th>
+                            <th class="p-2 border">TARİH</th>
+                            <th class="p-2 border">AÇIKLAMA (KATALOG)</th>
+                            <th class="p-2 border">STOK KONTROL (I)</th>
+                            <th class="p-2 border text-center">İŞLEM</th>
+                            <th class="p-2 border text-center">STOK</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bodyDusum">
+                        <tr><td colspan="12" class="p-6 text-center text-slate-400">Henüz veri işlenmedi.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TEKNİSYEN BAZINDA GSPN STOKLARI -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div>
+                        <h3 class="text-xs font-bold text-indigo-900">📦 Teknisyen Bazında Parça Stokları (Toplam Stok)</h3>
+                        <p class="text-[11px] text-slate-500">Dilediğiniz satırları seçip silebilir veya tümünü silebilirsiniz.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="deleteSelectedTechnicianStock()" class="admin-only bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition">
+                            🗑️ Seçilenleri Sil
+                        </button>
+                        <input id="searchTeknisyenStok" type="text" oninput="renderTechnicianStockTable()" placeholder="Teknisyen / parça kodu ara..." class="w-full md:w-56 p-1.5 border border-slate-300 rounded-lg text-xs">
+                    </div>
+                </div>
+                <div class="overflow-x-auto max-h-[350px] border border-slate-200 rounded-xl bg-white">
+                    <table class="w-full text-left border-collapse text-xs compact-table">
+                        <thead class="bg-slate-100 sticky top-0"><tr>
+                            <th class="p-2 border w-8 text-center"><input type="checkbox" id="selectAllStock" onclick="toggleSelectAllStock(this)"></th>
+                            <th class="p-2 border">TEKNİSYEN KODU</th>
+                            <th class="p-2 border">TEKNİSYEN</th>
+                            <th class="p-2 border">PARÇA KODU</th>
+                            <th class="p-2 border">PARÇA AÇIKLAMASI</th>
+                            <th class="p-2 border text-center">MEVCUT STOK</th>
+                            <th class="p-2 border text-center">İŞLEM</th>
+                        </tr></thead>
+                        <tbody id="bodyTeknisyenStok"><tr><td colspan="7" class="p-4 text-center text-slate-400">Arka planda GSPN stok dosyası yüklenmedi.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. AKILLI SİPARİŞ & STOK ANALİZ SEKMESİ -->
+        <div id="tab-akilli-siparis" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">📦 BE AND Depo & Teknisyenler - Akıllı Sipariş ve İhtiyaç Analizi</h2>
+                    <p class="text-xs text-slate-600">GSPN stok verileri ile arşiv satışları birleştirilir; BE AND depolarının toplam stoğu, toplam satışı ve verilmesi gereken net sipariş miktarı anlık hesaplanır.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="calculateSmartOrders()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1">
+                        🔄 Analizi Hesapla & Güncelle
+                    </button>
+                    <button onclick="exportSmartOrdersToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1">
+                        📥 Sipariş Raporunu İndir
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[520px] border border-slate-200 rounded-xl bg-white">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableSmartOrder">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="p-2.5 border">AKSESUAR / PART NO</th>
+                            <th class="p-2.5 border">AÇIKLAMA / TANIM</th>
+                            <th class="p-2.5 border text-center">BE AND MEVCUT TOPLAM STOK</th>
+                            <th class="p-2.5 border text-center">TOPLAM SATIŞ (ARŞİV + GÜNLÜK)</th>
+                            <th class="p-2.5 border text-center font-bold text-purple-800">ÖNERİLEN NET SİPARİŞ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bodySmartOrder">
+                        <tr><td colspan="5" class="p-6 text-center text-slate-400">Analiz henüz çalıştırılmadı. GSPN stok dosyası yükleyip butona tıklayın.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 7. GEÇMİŞ ARŞİV & KLASÖR ANALİZ SEKMESİ -->
+        <div id="tab-arsiv" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-slate-50 p-3.5 rounded-xl border">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">📚 Arşiv, Yükleme & Detaylı Klasör Analizi</h2>
+                    <p class="text-xs text-slate-500">Arşiv verilerinizi yükleyin, klasörleyin ve dönemsel analiz raporlarını inceleyin.</p>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-2">
+                    <label class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow cursor-pointer transition flex items-center gap-1">
+                        📂 Arşive Excel Yükle (.xlsx)
+                        <input type="file" id="fileArsivUpload" accept=".xlsx, .xls, .csv" class="hidden" onchange="loadArchiveExcelFile(this)">
+                    </label>
+                    <button onclick="removeDuplicateArchiveOrders()" class="admin-only bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow transition flex items-center gap-1">
+                        🧹 Çift İş Emirlerini Temizle
+                    </button>
+                    <button onclick="deleteSelectedArchiveRows()" class="admin-only bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow transition flex items-center gap-1">
+                        🗑️ Seçilen Kayıtları Sil
+                    </button>
+                </div>
+            </div>
+
+            <!-- ARŞİV KLASÖR SEÇİMİ VE ANALİZ BUTONU -->
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-100">
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <span class="font-bold text-xs text-indigo-900 flex items-center gap-1">📁 Arşiv Klasörü:</span>
+                    <select id="archiveFolderSelector" onchange="filterArsivTable()" class="p-2 border border-indigo-300 rounded-xl text-xs font-bold bg-white text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="TUMU">📂 Tüm Arşiv (Tüm Klasörler)</option>
+                    </select>
+                    
+                    <div class="flex items-center gap-1">
+                        <input type="text" id="newFolderInput" placeholder="Yeni Klasör Adı..." class="p-1.5 border border-indigo-300 rounded-xl text-xs bg-white">
+                        <button onclick="createNewArchiveFolder()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition whitespace-nowrap">
+                            ➕ Klasör Oluştur
+                        </button>
+                    </div>
+                    
+                    <button onclick="deleteCurrentActiveFolder()" class="admin-only bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow transition whitespace-nowrap">
+                        🗑️ Aktif Klasörü Sil
+                    </button>
+
+                    <button onclick="openArchiveAnalyticsModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow transition whitespace-nowrap flex items-center gap-1">
+                        📊 Klasör & Dönem Analizi
+                    </button>
+                </div>
+
+                <div class="flex gap-2 w-full md:w-auto justify-end">
+                    <button onclick="exportArsivFilteredToExcel()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow transition whitespace-nowrap flex items-center gap-1">
+                        📥 Klasörü İndir
+                    </button>
+                    <button onclick="exportArsivToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow transition whitespace-nowrap flex items-center gap-1">
+                        📥 Tüm Arşivi İndir
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50 p-3 rounded-xl border">
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <input type="text" id="searchArsiv" onkeyup="filterArsivTable()" placeholder="🔍 İş emri veya teknisyen adıyla ara..." class="p-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-72 bg-white">
+                    <div class="flex items-center gap-1 text-xs">
+                        <span class="font-semibold text-slate-600">Başlangıç:</span>
+                        <input type="date" id="filterDateStart" onchange="filterArsivTable()" class="p-1.5 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div class="flex items-center gap-1 text-xs">
+                        <span class="font-semibold text-slate-600">Bitiş:</span>
+                        <input type="date" id="filterDateEnd" onchange="filterArsivTable()" class="p-1.5 border border-slate-300 rounded-xl text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <button onclick="clearDateFilter()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition">
+                        Filtreyi Temizle
+                    </button>
+                </div>
+                <div class="text-xs font-bold text-slate-600">
+                    Gösterilen Arşiv Kaydı: <span id="arsivRecordCount" class="text-indigo-600">0</span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[480px] border border-slate-200 rounded-xl bg-white">
+                <table class="w-full text-left border-collapse text-xs compact-table" id="tableArsiv" style="table-layout: auto;">
+                    <thead class="bg-slate-100 sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="p-2 border w-8 text-center"><input type="checkbox" id="selectAllArsiv" onclick="toggleSelectAllArsiv(this)"></th>
+                            <th class="p-2 border">KLASÖR</th>
+                            <th class="p-2 border">ARŞİV TARİHİ</th>
+                            <th class="p-2 border">TEKNİSYEN</th>
+                            <th class="p-2 border">SUBE</th>
+                            <th class="p-2 border">PART NO</th>
+                            <th class="p-2 border text-center">ADET</th>
+                            <th class="p-2 border">İS EMRİ</th>
+                            <th class="p-2 border">CTS KODU</th>
+                            <th class="p-2 border">AÇIKLAMA</th>
+                            <th class="p-2 border text-center">İŞLEM</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bodyArsiv">
+                        <tr><td colspan="11" class="p-6 text-center text-slate-400">Arşivde kayıt bulunmuyor.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 5. WHATSAPP Sekmesi -->
+        <div id="tab-whatsapp" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div>
+                <h2 class="text-md font-bold text-indigo-900">WHATSAPP Gönderen İsim & A/B Sütun Modülü</h2>
+                <p class="text-xs text-slate-500">Gönderen isimleri otomatik yakalanır ve eşleştirilir.</p>
+            </div>
+            <textarea id="waInput" rows="5" class="w-full p-3 border border-slate-300 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500" placeholder="[19:51, 10.11.2026] umutyardımcı: 4298329097 F-AV-AKS2206&#10;[20:01, 10.11.2026] Ayhan: 4298321001   1001"></textarea>
+            <div class="flex gap-2">
+                <button onclick="extractWhatsAppOrders()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow transition">
+                    🔍 İsimleri ve Kodları Ayıkla
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto max-h-60 border border-slate-200 rounded-xl mt-3">
+                <table class="w-full text-left border-collapse text-xs compact-table">
+                    <thead class="bg-slate-100 sticky top-0">
+                        <tr>
+                            <th class="p-2 border">Gönderen İsim</th>
+                            <th class="p-2 border">İş Emri</th>
+                            <th class="p-2 border">Aksesuar Kodu</th>
+                            <th class="p-2 border">CTS KODU</th>
+                            <th class="p-2 border">TANIM</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bodyWhatsapp">
+                        <tr><td colspan="5" class="p-4 text-center text-slate-400">Veri yok.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 6. ÇAPRAZ KONTROL (MUTABAKAT) SEKMESİ -->
+        <div id="tab-mutabakat" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-md font-bold text-indigo-900">WhatsApp ve GSPN Çapraz Kontrol (Mutabakat)</h2>
+                    <p class="text-xs text-slate-500">WhatsApp'tan bildirilen eksikler gönderen isimleriyle otomatik olarak Düşüm listesine eklenir.</p>
+                </div>
+                <button onclick="runCrossCheck()" class="admin-only bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow transition">
+                    🔄 Mutabakatı Çalıştır & Listeyi Birleştir
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="border border-amber-200 bg-amber-50/40 p-3.5 rounded-xl">
+                    <h3 class="font-bold text-amber-900 text-xs mb-2 flex items-center justify-between">
+                        ⚠️ GSPN'de Var - WhatsApp'ta Yok
+                        <span id="badgeGspnOnly" class="bg-amber-200 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+                    </h3>
+                    <div class="overflow-x-auto max-h-56 bg-white border border-amber-100 rounded-lg">
+                        <table class="w-full text-left text-xs compact-table">
+                            <thead class="bg-amber-100 text-amber-900">
+                                <tr><th class="p-2 border">İş Emri</th><th class="p-2 border">Part No</th><th class="p-2 border">Teknisyen</th></tr>
+                            </thead>
+                            <tbody id="bodyGspnOnly">
+                                <tr><td colspan="3" class="p-3 text-center text-slate-400">Kontrol edilmedi.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="border border-rose-200 bg-rose-50/40 p-3.5 rounded-xl">
+                    <h3 class="font-bold text-rose-900 text-xs mb-2 flex items-center justify-between">
+                        ❌ WhatsApp'ta Var - GSPN'de Yok (İsimleriyle Eklendi)
+                        <span id="badgeWaOnly" class="bg-rose-200 text-rose-900 text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+                    </h3>
+                    <div class="overflow-x-auto max-h-56 bg-white border border-rose-100 rounded-lg">
+                        <table class="w-full text-left text-xs compact-table">
+                            <thead class="bg-rose-100 text-rose-900">
+                                <tr><th class="p-2 border">Gönderen</th><th class="p-2 border">İş Emri</th><th class="p-2 border">Aksesuar</th></tr>
+                            </thead>
+                            <tbody id="bodyWaOnly">
+                                <tr><td colspan="3" class="p-3 text-center text-slate-400">Kontrol edilmedi.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. KULLANICILAR & CANLI GÜNCELLEME SEKME YÖNETİMİ -->
+        <div id="tab-kullanicilar" class="tab-content hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Sol: Kullanıcı Ekleme ve Şifreli Yetki Paneli -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <h3 class="text-sm font-bold text-indigo-900">👥 Kullanıcı Tanımlama & Şifre Yönetimi</h3>
+                    <p class="text-xs text-slate-500">Sisteme yeni giriş yapacak kullanıcıları tanımlayın ve şifrelerini belirleyin.</p>
+                    
+                    <div class="admin-only space-y-2.5 bg-white p-3 rounded-xl border shadow-sm">
+                        <h4 class="text-xs font-bold text-slate-800">➕ Yeni Kullanıcı / Şifre Ekle</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input type="text" id="newUserNameInput" placeholder="Kullanıcı Adı" class="p-2 border rounded-lg text-xs w-full">
+                            <input type="password" id="newUserPassInput" placeholder="Giriş Şifresi" class="p-2 border rounded-lg text-xs w-full">
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <select id="newUserRoleSelect" class="p-2 border rounded-lg text-xs bg-white w-full">
+                                <option value="personel">Personel Yetkisi (Sadece İndirme)</option>
+                                <option value="admin">Admin Yetkisi (Tam Yetki)</option>
+                            </select>
+                            <button onclick="addNewSystemUser()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shadow">
+                                Kullanıcıyı Kaydet
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto max-h-60 border rounded-lg bg-white">
+                        <table class="w-full text-left text-xs compact-table">
+                            <thead class="bg-slate-100">
+                                <tr>
+                                    <th class="p-2 border">Kullanıcı Adı</th>
+                                    <th class="p-2 border">Rol</th>
+                                    <th class="p-2 border">Şifre Durumu</th>
+                                    <th class="p-2 border text-center">İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodySystemUsers">
+                                <tr><td colspan="4" class="p-3 text-center text-slate-400">Yükleniyor...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Sağ: Admin Canlı Kod/Sürüm Güncelleme Paneli -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <h3 class="text-sm font-bold text-indigo-900">🚀 Canlı Program Güncelleme Yayınla</h3>
+                    <p class="text-xs text-slate-500">Admin yeni sürüm yayınladığında diğer tüm aktif ekranlarda güncelleme butonu çıkar.</p>
+                    
+                    <div class="admin-only space-y-2.5 bg-white p-3 rounded-lg border">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Güncelleme Notu / Sürüm Açıklaması:</label>
+                            <input type="text" id="updateVersionTitle" placeholder="Örn: v4.61 - Sessiz Yerel Yedekleme" class="w-full p-2 border rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Güncelleme İçeriği / Script Notu:</label>
+                            <textarea id="updateTypeScript" rows="3" class="w-full p-2 border rounded-lg text-xs font-mono" placeholder="Yeni eklenen kurallar veya notlar..."></textarea>
+                        </div>
+                        <button onclick="publishAppUpdate()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold shadow transition w-full">
+                            📢 Tüm Kullanıcılara Güncellemeyi Yayınla
+                        </button>
+                    </div>
+
+                    <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-900 space-y-1">
+                        <p class="font-bold">ℹ️ Bilgi:</p>
+                        <p>Verileriniz tarayıcınızda (localStorage) ve bulutta tamamen sessiz bir şekilde korunur.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ARŞİV ANALİZ MODALI -->
+    <div id="archiveAnalyticsModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-3xl w-full border border-slate-200 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-md font-bold text-indigo-900">📊 Arşiv & Klasör Dönem Analizi</h3>
+                <button onclick="closeArchiveAnalyticsModal()" class="text-slate-400 hover:text-slate-700 font-bold text-lg">✕</button>
+            </div>
+            
+            <div id="analyticsContent" class="space-y-4 text-xs">
+                <p class="text-slate-500">Analiz yükleniyor...</p>
+            </div>
+
+            <div class="flex justify-end pt-2 border-t">
+                <button onclick="closeArchiveAnalyticsModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition">
+                    Kapat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyB1tV28p_V7pqhBnvWanqQ_oJ6MFN1rdB4",
+            authDomain: "hasan60.firebaseapp.com",
+            databaseURL: "https://hasan60-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "hasan60",
+            storageBucket: "hasan60.firebasestorage.app",
+            messagingSenderId: "887818173877",
+            appId: "1:887818173877:web:5b594dea76136c3e48edfc",
+            measurementId: "G-PBSPP51GMB"
+        };
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
+
+        let currentUser = null;
+        let systemUsers = [
+            { name: "Hasan Karaarslan", pass: "1234", role: "admin" },
+            { name: "Operasyon Personeli", pass: "1234", role: "personel" }
+        ];
+        let lastKnownAppVersion = 0;
+        let currentFilteredArsivData = [];
+
+        let embeddedTeknisyenData = [
+            { "NO": 1, "Ship To Code": "0005995944", "Sold To Code": "7286012503", "ASC Name": "BE AND ADEM YAMAN" },
+            { "NO": 1, "Ship To Code": "0002468250", "Sold To Code": "7286010891", "ASC Name": "BE AND AHMET CEMAL YARIMBAS" },
+            { "NO": 1, "Ship To Code": "0002468198", "Sold To Code": "7286010889", "ASC Name": "BE AND AHMET OZDEMIR" },
+            { "NO": 1, "Ship To Code": "0002468251", "Sold To Code": "7286010892", "ASC Name": "BE AND AYHAN AKLI" },
+            { "NO": 1, "Ship To Code": "0005995945", "Sold To Code": "7286012504", "ASC Name": "BE AND BATIKAN KARA" },
+            { "NO": 1, "Ship To Code": "0002468255", "Sold To Code": "7286010896", "ASC Name": "BE AND BAYRAM OZGENC" },
+            { "NO": 1, "Ship To Code": "0002468258", "Sold To Code": "7286010868", "ASC Name": "BE AND FATIH BUYUK" },
+            { "NO": 1, "Ship To Code": "0002468199", "Sold To Code": "7286010890", "ASC Name": "BE AND FATIH CIRTLIK" },
+            { "NO": 1, "Ship To Code": "0004152234", "Sold To Code": "7286011481", "ASC Name": "BE AND FATİH İLLİK" },
+            { "NO": 1, "Ship To Code": "0004152231", "Sold To Code": "7286011480", "ASC Name": "BE AND GOKHAN KANBIR" },
+            { "NO": 1, "Ship To Code": "0002468259", "Sold To Code": "7286010899", "ASC Name": "BE AND IBRAHIM KAPUSUZ" },
+            { "NO": 1, "Ship To Code": "0005995946", "Sold To Code": "7286012505", "ASC Name": "BE AND İBRAHİM SEKBAN" },
+            { "NO": 1, "Ship To Code": "0006464207", "Sold To Code": "7286012854", "ASC Name": "BE AND KERİM İLLİK" },
+            { "NO": 1, "Ship To Code": "0002468196", "Sold To Code": "7286010867", "ASC Name": "BE AND SUAT SENOL" },
+            { "NO": 1, "Ship To Code": "0002468252", "Sold To Code": "7286010893", "ASC Name": "BE AND SUKRU CALI" },
+            { "NO": 1, "Ship To Code": "0006464209", "Sold To Code": "7286012890", "ASC Name": "BE AND TAYYİP ORAL" },
+            { "NO": 1, "Ship To Code": "0006464208", "Sold To Code": "7286012853", "ASC Name": "BE AND UMIT CAN GUL" },
+            { "NO": 1, "Ship To Code": "0003890543", "Sold To Code": "7286011216", "ASC Name": "BE AND ZAFER KURT" },
+            { "NO": 1, "Ship To Code": "0007114897", "Sold To Code": "7286013373", "ASC Name": "BE AND UMUT OZCAN" },
+            { "NO": 1, "Ship To Code": "0007114899", "Sold To Code": "7286013374", "ASC Name": "BE AND YAVUZ YILDIRIM" },
+            { "NO": 1, "Ship To Code": "0007114910", "Sold To Code": "7286013375", "ASC Name": "BE AND YUSUF YENER" },
+            { "NO": 1, "Ship To Code": "0007120700", "Sold To Code": "7286013424", "ASC Name": "BE AND RAMAZAN YESILYURT" },
+            { "NO": 1, "Ship To Code": "0002468270", "Sold To Code": "", "ASC Name": "ASYA DEPO" }
+        ].map(item => {
+            let code = String(item["Ship To Code"]).trim();
+            if (code.length > 0 && code.length < 10) {
+                item["Ship To Code"] = code.padStart(10, '0');
+            }
+            return item;
+        });
+
+        const embeddedKodlarData = [
+            { "GSPN KODU BEPA": "F-AV-AKS2001", "GSPN KODU NOV": "F-AV-AKS2001-N", "CTS KODU": "2000200120", "Tanım": "HDMI KABLO 1.4v 1.5m" },
+            { "GSPN KODU BEPA": "F-AV-AKS2002", "GSPN KODU NOV": "F-AV-AKS2002-N", "CTS KODU": "2000401374", "Tanım": "TV GUVENLIK KEMERI" },
+            { "GSPN KODU BEPA": "F-AV-AKS2003", "GSPN KODU NOV": "F-AV-AKS2003-N", "CTS KODU": "2000402240", "Tanım": "DUVAR ASKI APARATI (22-40)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2004", "GSPN KODU NOV": "F-AV-AKS2004-N", "CTS KODU": "2000900901", "Tanım": "F-F UYDU KABLOSU 1.5m" },
+            { "GSPN KODU BEPA": "F-AV-AKS2005", "GSPN KODU NOV": "F-AV-AKS2005-N", "CTS KODU": "2001100718", "Tanım": "FIBER OPTIK HD SES KABLOSU 1.5m" },
+            { "GSPN KODU BEPA": "F-AV-AKS2006", "GSPN KODU NOV": "F-AV-AKS2006-N", "CTS KODU": "2000743035", "Tanım": "ÇOKLU AKIM KORUYUCU PRİZ" },
+            { "GSPN KODU BEPA": "F-AV-AKS2007", "GSPN KODU NOV": "F-AV-AKS2007-N", "CTS KODU": "2000404260", "Tanım": "DUVAR ASKI APARATI (SABİT) (42\" - 60\" )" },
+            { "GSPN KODU BEPA": "F-AV-AKS2008", "GSPN KODU NOV": "F-AV-AKS2008-N", "CTS KODU": "2000402261", "Tanım": "SABİT KİLİTLİ DUVAR ASKI APARATI (42-60)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2009", "GSPN KODU NOV": "F-AV-AKS2009-N", "CTS KODU": "2000726024", "Tanım": "TEKLİ AKIM KORUMALI PRIZ (ELİT)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2010", "GSPN KODU NOV": "F-AV-AKS2010-N", "CTS KODU": "2000301109", "Tanım": "PERFECT EKRAN TEMİZLEME SETİ (200 ml)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2011", "GSPN KODU NOV": "F-AV-AKS2011-N", "CTS KODU": "2000301110", "Tanım": "PERFECT EKRAN TEMİZLEME SETİ (400 ml)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2012", "GSPN KODU NOV": "F-AV-AKS2012-N", "CTS KODU": "2000401021", "Tanım": "DUVAR ASKI APARATI (HARAKETLİ) (42\"-65\")" },
+            { "GSPN KODU BEPA": "F-AV-AKS2201", "GSPN KODU NOV": "F-AV-AKS2201-N", "CTS KODU": "2000200020", "Tanım": "HDMI KABLO 1.8m 4K 2.0 VERSİYON" },
+            { "GSPN KODU BEPA": "F-AV-AKS2202", "GSPN KODU NOV": "F-AV-AKS2202-N", "CTS KODU": "2000210319", "Tanım": "HDMI KABLO 1.8m 4K 2.1 VERSİYON" },
+            { "GSPN KODU BEPA": "F-AV-AKS2203", "GSPN KODU NOV": "F-AV-AKS2203-N", "CTS KODU": "2000401372", "Tanım": "İP APARAT, DUVAR ASKI APARATI DIGIWORLD US400 wesa40x40" },
+            { "GSPN KODU BEPA": "F-AV-AKS2204", "GSPN KODU NOV": "F-AV-AKS2204-N", "CTS KODU": "2000401375", "Tanım": "İP APARAT, DUVAR ASKI APARATI DIGIWORLD US400 wesa60x60" },
+            { "GSPN KODU BEPA": "F-AV-AKS2206", "GSPN KODU NOV": "F-AV-AKS2206-N", "CTS KODU": "2000405260", "Tanım": "DUVAR ASKI APARATI (SABİT) (42\" - 85\" )" },
+            { "GSPN KODU BEPA": "F-AV-AKS2207", "GSPN KODU NOV": "F-AV-AKS2207-N", "CTS KODU": "2000726022", "Tanım": "TEKLİ AKIM KORUMALI PRIZ (PRO)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2208", "GSPN KODU NOV": "F-AV-AKS2208-N", "CTS KODU": "2000702171", "Tanım": "TEKLİ AKIM KORUMALI PRIZ (SMART)" },
+            { "GSPN KODU BEPA": "F-AV-AKS2209", "GSPN KODU NOV": "F-AV-AKS2209-N", "CTS KODU": "2000409042", "Tanım": "DUVAR ASKI APARATI (HARAKETLİ) (32\"-40\")" },
+            { "GSPN KODU BEPA": "F-AV-AKS2210", "GSPN KODU NOV": "F-AV-AKS2210-N", "CTS KODU": "2000408041", "Tanım": "TAVAN ASKI APARATI-DIGIWORD-32\" 40\" PLZ HAREKETLİ 6090" },
+            { "GSPN KODU BEPA": "F-AV-AKS2211", "GSPN KODU NOV": "F-AV-AKS2211-N", "CTS KODU": "2000408042", "Tanım": "TAVAN ASKI APARATI-DIGIWORD-42\" 65\" PLZ HAREKETLİ 74150" },
+            { "GSPN KODU BEPA": "F-AV-AKS2212", "GSPN KODU NOV": "F-AV-AKS2212-N", "CTS KODU": "5000703509", "Tanım": "MİCROFİBER BEZ 40X40 EXCLUSIVE CARE A+PLUS OLED BEZ" },
+            { "GSPN KODU BEPA": "F-AV-AKS2216", "GSPN KODU NOV": "F-AV-AKS2216-N", "CTS KODU": "2000301050", "Tanım": "EKRAN KORUYUCU 50\" 112,5cm X 65cm" },
+            { "GSPN KODU BEPA": "F-AV-AKS2217", "GSPN KODU NOV": "F-AV-AKS2217-N", "CTS KODU": "2000301065", "Tanım": "EKRAN KORUYUCU 65\" 145,5cm X 83,5cm" },
+            { "GSPN KODU BEPA": "F-AV-AKS2218", "GSPN KODU NOV": "F-AV-AKS2218-N", "CTS KODU": "2000301075", "Tanım": "EKRAN KORUYUCU 75\" 167,5cm X 96cm PLUS 168cm X 96,5cm" },
+            { "GSPN KODU BEPA": "F-AV-AKS2219", "GSPN KODU NOV": "F-AV-AKS2219-N", "CTS KODU": "2000301055", "Tanım": "EKRAN KORUYUCU 55\" 123cm X 71cm" },
+            { "GSPN KODU BEPA": "F-BEPA98", "GSPN KODU NOV": "F-BEPA98-N", "CTS KODU": "2000465100", "Tanım": "DUVAR ASKI APARATI (SABİT)(65\"-100\")(HEAVY DUTY)" },
+            { "GSPN KODU BEPA": "F-HA-AKS1001", "GSPN KODU NOV": "F-HA-AKS1001-N", "CTS KODU": "5000200901", "Tanım": "MAKİNE TEMİZLEYİCİ (CAM. VE BUL. - 4 İN 1)" },
+            { "GSPN KODU BEPA": "F-HA-AKS1002", "GSPN KODU NOV": "F-HA-AKS1002-N", "CTS KODU": "5000100011", "Tanım": "MAXI MANYETİK KİREÇ ÖNLEYİCİ 77MM" },
+            { "GSPN KODU BEPA": "F-HA-AKS1003", "GSPN KODU NOV": "F-HA-AKS1003-N", "CTS KODU": "5000100012", "Tanım": "POWER MANYETİK KİREÇ ÖNLEYİCİ 61MM" },
+            { "GSPN KODU BEPA": "F-HA-AKS1004", "GSPN KODU NOV": "F-HA-AKS1004-N", "CTS KODU": "5000100013", "Tanım": "ECO MANYETİK KİREÇ ÖNLEYİCİ 58MM" },
+            { "GSPN KODU BEPA": "F-HA-AKS1005", "GSPN KODU NOV": "F-HA-AKS1005-N", "CTS KODU": "5000305112", "Tanım": "CELIK YUZEY TEMIZLIK & BAKIM SPRAY 500ml" },
+            { "GSPN KODU BEPA": "F-HA-AKS1006", "GSPN KODU NOV": "F-HA-AKS1006-N", "CTS KODU": "5000604004", "Tanım": "BUZDOLABI TEMİZLEYİCİ 500ml" },
+            { "GSPN KODU BEPA": "F-HA-AKS1007", "GSPN KODU NOV": "F-HA-AKS1007-N", "CTS KODU": "5000502505", "Tanım": "VITROSERAMİK OCAK TEMİZLİK & BAKIM URUNU 250ml" },
+            { "GSPN KODU BEPA": "F-HA-AKS1008", "GSPN KODU NOV": "F-HA-AKS1008-N", "CTS KODU": "5001200005", "Tanım": "FİLOJET SU POMPASI" },
+            { "GSPN KODU BEPA": "F-HA-AKS2201", "GSPN KODU NOV": "F-HA-AKS2201-N", "CTS KODU": "5001700010", "Tanım": "BUZDOLABI KOKU EMİCİ AKTİF KARBON FİLTRE, PROMAXX" },
+            { "GSPN KODU BEPA": "F-HA-AKS2202", "GSPN KODU NOV": "F-HA-AKS2202-N", "CTS KODU": "5000904008", "Tanım": "KLİMA TEMİZLEYİCİ.,Spray,PROMAXX,500ml" },
+            { "GSPN KODU BEPA": "F-HA-AKS2203", "GSPN KODU NOV": "F-HA-AKS2203-N", "CTS KODU": "8000603001", "Tanım": "STREÇ FİLM,300mt(2,40kg) T4350" },
+            { "GSPN KODU BEPA": "F-HA-AKS2204", "GSPN KODU NOV": "F-HA-AKS2204-N", "CTS KODU": "6000400029", "Tanım": "EVAPORATOR KONDENSER FIN DUZLESTIRICI TA" },
+            { "GSPN KODU BEPA": "F-VOGEL98", "GSPN KODU NOV": "F-VOGEL98-N", "CTS KODU": "2000440100", "Tanım": "ASKI APARATI 40\" 100\" 75KG KADAR TVM1605 40\" 100\" VOGELS" },
+            { "GSPN KODU BEPA": "F-AC-AKS1009", "GSPN KODU NOV": "F-AC-AKS1009", "CTS KODU": "", "Tanım": "3/8-5/8 AKSESUARLI MONTAJ SETİ 8 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1006", "GSPN KODU NOV": "F-AC-AKS1006", "CTS KODU": "", "Tanım": "1/4-3/8 AKSESUARLI MONTAJ SETİ 8 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1015", "GSPN KODU NOV": "F-AC-AKS1015", "CTS KODU": "", "Tanım": "3/8-5/8 AKSESUARLI MONTAJ SETİ 15 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1012", "GSPN KODU NOV": "F-AC-AKS1012", "CTS KODU": "", "Tanım": "1/4-5/8 AKSESUARLI MONTAJ SETİ 10 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1007", "GSPN KODU NOV": "F-AC-AKS1007", "CTS KODU": "", "Tanım": "1/4-1/2 AKSESUARLI MONTAJ SETİ 8 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1008", "GSPN KODU NOV": "F-AC-AKS1008", "CTS KODU": "", "Tanım": "1/4-5/8 AKSESUARLI MONTAJ SETİ 8 METRE" },
+            { "GSPN KODU BEPA": "F-AC-AKS1011", "GSPN KODU NOV": "F-AC-AKS1011", "CTS KODU": "", "Tanım": "1/4-1/2 AKSESUARLI MONTAJ SETİ 10 METRE" }
+        ];
+
+        let db = {
+            gspn: [],
+            kodlar: [...embeddedKodlarData],
+            teknisyen: [...embeddedTeknisyenData],
+            gspnstok: [],
+            dusum: [],
+            whatsapp: [],
+            arsiv: [],
+            users: [...systemUsers],
+            appVersion: 1
+        };
+
+        // GİRİŞ KONTROL MEKANİZMASI
+        function handleUserLogin(e) {
+            e.preventDefault();
+            let enteredName = document.getElementById('loginUserInput').value.trim();
+            let enteredPass = document.getElementById('loginPasswordInput').value.trim();
+            let errorMsg = document.getElementById('loginErrorMsg');
+
+            let user = db.users.find(u => u.name.toLocaleUpperCase('tr-TR') === enteredName.toLocaleUpperCase('tr-TR'));
+
+            if (user && user.pass === enteredPass) {
+                currentUser = user;
+                errorMsg.classList.add('hidden');
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                
+                applyUserRoleUI();
+                showToast(`🚀 Hoş geldiniz, ${currentUser.name}! (${currentUser.role.toUpperCase()} Yetkisi)`);
+            } else {
+                errorMsg.innerText = "❌ Hatalı kullanıcı adı veya şifre! Lütfen kontrol edin.";
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        function logoutUser() {
+            currentUser = null;
+            document.getElementById('loginPasswordInput').value = "";
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+            showToast("🔒 Oturum kapatıldı.");
+        }
+
+        function changeOwnPassword() {
+            if (!currentUser) return;
+            let newPass = prompt(`Merhaba ${currentUser.name}, yeni şifrenizi giriniz:`);
+            if (newPass !== null && newPass.trim() !== "") {
+                let userIndex = db.users.findIndex(u => u.name.toLocaleUpperCase('tr-TR') === currentUser.name.toLocaleUpperCase('tr-TR'));
+                if (userIndex !== -1) {
+                    db.users[userIndex].pass = newPass.trim();
+                    currentUser.pass = newPass.trim();
+                    saveToCloud();
+                    renderSystemUsersTable();
+                    showToast("✅ Şifreniz başarıyla değiştirildi ve buluta kaydedildi!");
+                }
+            }
+        }
+
+        function populateLoginDropdown() {
+            let datalist = document.getElementById('userListOptions');
+            if(!datalist) return;
+            datalist.innerHTML = db.users.map(u => `<option value="${u.name}"></option>`).join('');
+        }
+
+        function checkAdminAuth() {
+            if (!currentUser || currentUser.role !== 'admin') {
+                showToast("⚠️ Bu işlem için 'Admin' yetkisi gereklidir!", "error");
+                return false;
+            }
+            return true;
+        }
+
+        function applyUserRoleUI() {
+            if (!currentUser) return;
+            document.getElementById('currentUserName').innerText = currentUser.name;
+            let roleSpan = document.getElementById('currentUserRole');
+            roleSpan.innerText = currentUser.role.toUpperCase();
+            roleSpan.className = currentUser.role === 'admin' ? "text-amber-300 font-bold" : "text-emerald-300 font-bold";
+
+            const adminEls = document.querySelectorAll('.admin-only');
+            adminEls.forEach(el => {
+                el.style.display = currentUser.role === 'admin' ? '' : 'none';
+            });
+        }
+
+        function renderSystemUsersTable() {
+            let tbody = document.getElementById('bodySystemUsers');
+            if(!tbody) return;
+            tbody.innerHTML = db.users.map((u, idx) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-2 border font-semibold">${u.name}</td>
+                    <td class="p-2 border font-bold ${u.role === 'admin' ? 'text-indigo-600' : 'text-emerald-600'}">${u.role.toUpperCase()}</td>
+                    <td class="p-2 border font-mono">••••••••</td>
+                    <td class="p-2 border text-center space-x-1">
+                        ${currentUser && (currentUser.role === 'admin' || currentUser.name === u.name) ? `
+                            <button onclick="editUserPassword(${idx})" class="bg-amber-100 hover:bg-amber-200 text-amber-800 px-2 py-1 rounded text-xs font-bold transition">Şifre Değiştir</button>
+                        ` : ''}
+                        ${currentUser && currentUser.role === 'admin' && db.users.length > 1 ? `
+                            <button onclick="deleteSystemUser(${idx})" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-1 rounded text-xs font-bold transition">Sil</button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function addNewSystemUser() {
+            if(!checkAdminAuth()) return;
+            let name = document.getElementById('newUserNameInput').value.trim();
+            let pass = document.getElementById('newUserPassInput').value.trim();
+            let role = document.getElementById('newUserRoleSelect').value;
+
+            if(!name || !pass) {
+                showToast("Lütfen Kullanıcı Adı ve Şifre alanlarını doldurun!", "error");
+                return;
+            }
+
+            db.users.push({ name, pass, role });
+            document.getElementById('newUserNameInput').value = "";
+            document.getElementById('newUserPassInput').value = "";
+            
+            renderSystemUsersTable();
+            populateLoginDropdown();
+            saveToCloud();
+            showToast("Yeni şifreli kullanıcı eklendi ve buluta kaydedildi.");
+        }
+
+        function editUserPassword(idx) {
+            let targetUser = db.users[idx];
+            if (currentUser.role !== 'admin' && currentUser.name !== targetUser.name) {
+                showToast("Başkalarının şifresini yalnızca admin değiştirebilir!", "error");
+                return;
+            }
+            let newPass = prompt(`${targetUser.name} kullanıcısı için yeni şifre girin:`, targetUser.pass);
+            if(newPass !== null && newPass.trim() !== "") {
+                db.users[idx].pass = newPass.trim();
+                if (currentUser.name === targetUser.name) currentUser.pass = newPass.trim();
+                renderSystemUsersTable();
+                saveToCloud();
+                showToast(`✅ ${targetUser.name} kullanıcısının şifresi güncellendi!`);
+            }
+        }
+
+        function deleteSystemUser(idx) {
+            if(!checkAdminAuth()) return;
+            db.users.splice(idx, 1);
+            renderSystemUsersTable();
+            populateLoginDropdown();
+            saveToCloud();
+            showToast("Kullanıcı silindi.");
+        }
+
+        // SESSİZ YEREL YEDEKLEME (LocalStorage Auto-Save & Manual PC Backup)
+        function triggerLocalBackup() {
+            try {
+                let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+                let downloadAnchor = document.createElement('a');
+                let tarihStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", `Aksesuar_Sistemi_Yedek_${tarihStr}.json`);
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+                showToast("💾 Bilgisayara yedek başarıyla indirildi!");
+            } catch(e) {
+                console.error("Yedek alma hatası:", e);
+            }
+        }
+
+        // Buluttan Canlı Veri Dinleme
+        window.onload = function() {
+            try {
+                // Önce tarayıcı yerel hafızasındaki en son veriyi kontrol et (hızlı yükleme için)
+                let localCached = localStorage.getItem('aksesuar_local_cache_v461');
+                if (localCached) {
+                    try {
+                        let parsed = JSON.parse(localCached);
+                        if (parsed && parsed.dusum) {
+                            db.dusum = parsed.dusum || [];
+                            db.arsiv = parsed.arsiv || [];
+                            db.kodlar = parsed.kodlar || [...embeddedKodlarData];
+                            db.teknisyen = parsed.teknisyen || [...embeddedTeknisyenData];
+                            db.users = parsed.users || [...systemUsers];
+                        }
+                    } catch(ex) {}
+                }
+
+                database.ref('aksesuar_sistemi_v461').on('value', (snapshot) => {
+                    const cloudData = snapshot.val();
+                    if (cloudData) {
+                        db.dusum = cloudData.dusum || [];
+                        db.arsiv = cloudData.arsiv || [];
+                        db.kodlar = cloudData.kodlar || [...embeddedKodlarData];
+                        db.teknisyen = cloudData.teknisyen || [...embeddedTeknisyenData];
+                        db.users = cloudData.users || [...systemUsers];
+                        
+                        let cloudVersion = cloudData.appVersion || 1;
+                        if (lastKnownAppVersion && cloudVersion > lastKnownAppVersion) {
+                            document.getElementById('updateBanner').classList.remove('hidden');
+                            document.getElementById('updateMessage').innerText = `🚀 Yeni Güncelleme Yayınlandı: "${cloudData.updateTitle || 'Sürüm Güncellendi'}"`;
+                        }
+                        lastKnownAppVersion = cloudVersion;
+
+                        document.getElementById('cloudStatus').innerText = "☁️ Bulut: Canlı Senkronize";
+                        document.getElementById('cloudStatus').className = "bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1";
+                    } else {
+                        document.getElementById('cloudStatus').innerText = "☁️ Bulut: Boş / Yeni";
+                        document.getElementById('cloudStatus').className = "bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1";
+                    }
+                    
+                    // Yerel hafızaya sessizce kaydet
+                    localStorage.setItem('aksesuar_local_cache_v461', JSON.stringify(db));
+
+                    populateLoginDropdown();
+                    renderTable('kodlar');
+                    renderTable('teknisyen');
+                    renderDusumRows(db.dusum);
+                    updateTechnicianDropdown();
+                    updateSummaryPanel();
+                    refreshCatalogTechnicianOptions();
+                    updateArchiveFolderDropdown();
+                    filterArsivTable();
+                    renderSystemUsersTable();
+                    if(currentUser) applyUserRoleUI();
+                }, (error) => {
+                    document.getElementById('cloudStatus').innerText = "☁️ Bulut: Bağlantı Hatası!";
+                    document.getElementById('cloudStatus').className = "bg-rose-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1";
+                });
+            } catch(e) {
+                console.error("Firebase dinleyici hatası:", e);
+            }
+        };
+
+        let saveTimeout = null;
+        function saveToCloud() {
+            clearTimeout(saveTimeout);
+            document.getElementById('cloudStatus').innerText = "☁️ Bulut: Kaydediliyor...";
+            document.getElementById('cloudStatus').className = "bg-amber-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1";
+
+            // Yerel hafızaya anında sessiz yedek al (tarayıcı çökme koruması)
+            localStorage.setItem('aksesuar_local_cache_v461', JSON.stringify(db));
+
+            saveTimeout = setTimeout(() => {
+                database.ref('aksesuar_sistemi_v461').set({
+                    dusum: db.dusum,
+                    arsiv: db.arsiv,
+                    kodlar: db.kodlar,
+                    teknisyen: db.teknisyen,
+                    users: db.users,
+                    appVersion: db.appVersion || 1,
+                    updateTitle: db.updateTitle || "Stabil Sürüm"
+                }).then(() => {
+                    document.getElementById('cloudStatus').innerText = "☁️ Bulut: Canlı Senkronize";
+                    document.getElementById('cloudStatus').className = "bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold shadow flex items-center gap-1";
+                    showToast("☁️ Veriler buluta ve sessiz yerel belleğe kaydedildi!");
+                }).catch((err) => {
+                    showToast("Buluta kaydetme hatası: " + err.message, "error");
+                });
+            }, 600);
+        }
+
+        function publishAppUpdate() {
+            if(!checkAdminAuth()) return;
+            let title = document.getElementById('updateVersionTitle').value.trim() || "Genel Güncelleme";
+            db.appVersion = (db.appVersion || 1) + 1;
+            db.updateTitle = title;
+            saveToCloud();
+            showToast("📢 Güncelleme başarıyla yayınlandı! Diğer kullanıcılara bildirim gitti.");
+        }
+
+        function applyAppUpdate() {
+            location.reload();
+        }
+
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('statusToast');
+            const toastMsg = document.getElementById('toastMessage');
+            toast.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-800', 'border-emerald-200', 'bg-rose-50', 'text-rose-800', 'border-rose-200');
+            toast.classList.add(type === 'success' ? 'bg-emerald-50' : 'bg-rose-50', type === 'success' ? 'text-emerald-800' : 'text-rose-800', type === 'success' ? 'border-emerald-200' : 'border-rose-200');
+            toastMsg.innerText = msg;
+        }
+
+        function hideToast() {
+            document.getElementById('statusToast').classList.add('hidden');
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-indigo-600', 'text-indigo-600');
+                el.classList.add('border-transparent', 'text-slate-500');
+            });
+            document.getElementById(tabId).classList.remove('hidden');
+            let activeBtn = document.getElementById('btn-' + tabId.replace('tab-', ''));
+            if(activeBtn) {
+                activeBtn.classList.add('border-indigo-600', 'text-indigo-600');
+                activeBtn.classList.remove('border-transparent', 'text-slate-500');
+            }
+            if(tabId === 'tab-akilli-siparis') {
+                calculateSmartOrders();
+            }
+        }
+
+        function cleanAndFormatDate(val) {
+            if (!val) return new Date().toLocaleDateString('tr-TR');
+            let sStr = String(val).trim();
+            if (/^\d{2}\.\d{2}\.\d{4}$/.test(sStr)) return sStr;
+            
+            let num = Number(sStr);
+            if (!isNaN(num) && num > 30000 && num < 60000) {
+                let utc_days = Math.floor(num - 25569);
+                let utc_value = utc_days * 86400;
+                let date_info = new Date(utc_value * 1000);
+                let day = String(date_info.getDate()).padStart(2, '0');
+                let month = String(date_info.getMonth() + 1).padStart(2, '0');
+                let year = date_info.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(sStr)) {
+                let parts = sStr.split('-');
+                return `${parts[2]}.${parts[1]}.${parts[0]}`;
+            }
+            return sStr || new Date().toLocaleDateString('tr-TR');
+        }
+
+        function parseToIsoDate(dateStr) {
+            if (!dateStr) return "";
+            let sStr = cleanAndFormatDate(dateStr);
+            let parts = sStr.split('.');
+            if (parts.length === 3) {
+                return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+            return "";
+        }
+
+        function extractJobAndDate(rawWorkOrder, rawDate) {
+            let combined = String(rawWorkOrder || "") + String(rawDate || "");
+            let jobMatch = combined.match(/\b4\d{9}\b/);
+            let jobOrder = jobMatch ? jobMatch[0] : String(rawWorkOrder || "").trim();
+            
+            let remaining = combined.replace(jobOrder, "").trim();
+            let formattedDate = cleanAndFormatDate(remaining || rawDate);
+            if (!formattedDate || formattedDate.length > 10) {
+                formattedDate = new Date().toLocaleDateString('tr-TR');
+            }
+            return { jobOrder, formattedDate };
+        }
+
+        function normalizeHeaderName(value) {
+            return String(value || '').replace(/\u00a0/g, ' ').trim().toUpperCase().replace(/\s+/g, '_');
+        }
+
+        function normalizeCode(value, width = 0) {
+            let v = String(value == null ? '' : value).trim().replace(/\u00a0/g, '');
+            if (/^\d+\.0+$/.test(v)) v = v.replace(/\.0+$/, '');
+            v = v.toUpperCase();
+            if (width && /^\d+$/.test(v) && v.length < width) v = v.padStart(width, '0');
+            return v;
+        }
+
+        function normalizeGspnStockRow(row) {
+            const aliases = {
+                PARTS_CODE: ['PARTS_CODE', 'PART_CODE', 'PARÇA_KODU'],
+                PARTS_DESC: ['PARTS_DESC', 'PART_DESC', 'PARÇA_AÇIKLAMASI'],
+                ASC_CODE: ['ASC_CODE', 'ASC', 'TEKNİSYEN_KODU'],
+                ASC_NAME: ['ASC_NAME', 'ASC_ADI', 'TEKNİSYEN'],
+                AVAILABLE_QTY: ['AVAILABLE_QTY', 'AVAILABLE_QTY.', 'MEVCUT_STOK'],
+                AVA_STOCK: ['AVA_STOCK'],
+                STOCK_QTY: ['STOCK_QTY'],
+                ASSIGNED_QTY: ['ASSIGNED_QTY']
+            };
+            const normalized = {};
+            Object.keys(row).forEach(k => normalized[normalizeHeaderName(k)] = row[k]);
+            const out = { ...row };
+            Object.entries(aliases).forEach(([target, names]) => {
+                for (const name of names) {
+                    const key = normalizeHeaderName(name);
+                    if (normalized[key] !== undefined && normalized[key] !== '') { out[target] = normalized[key]; break; }
+                }
+            });
+            out.ASC_CODE = normalizeCode(out.ASC_CODE, 10);
+            out.PARTS_CODE = normalizeCode(out.PARTS_CODE);
+            return out;
+        }
+
+        function excelColumnName(index) {
+            let name = '';
+            let n = index + 1;
+            while (n > 0) { const r = (n - 1) % 26; name = String.fromCharCode(65 + r) + name; n = Math.floor((n - 1) / 26); }
+            return name;
+        }
+
+        function parseGspnWorksheet(worksheet) {
+            const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false, blankrows: false });
+            if (!matrix.length) return [];
+            const headers = matrix[0].map(v => String(v || '').trim());
+            return matrix.slice(1).filter(row => row.some(v => String(v || '').trim() !== '')).map(values => {
+                const obj = {};
+                headers.forEach((h, i) => { if (h) obj[h] = values[i] ?? ''; });
+                values.forEach((v, i) => { obj[excelColumnName(i)] = v ?? ''; });
+                obj._GSPN_DATE = obj.A; obj._GSPN_WORK_ORDER = obj.B;
+                obj._GSPN_TECH_CODE = obj.D; obj._GSPN_TECH_NAME = obj.E;
+                obj._GSPN_ACCESSORY_1 = obj.AS; obj._GSPN_ACCESSORY_2 = obj.AT; obj._GSPN_ACCESSORY_3 = obj.AU;
+                return obj;
+            });
+        }
+
+        function formatDataToTargetTemplate(dataArray) {
+            return dataArray.map(item => ({
+                "KLASÖR": item.KLASÖR || "Genel Arşiv",
+                "TEKNİSYEN": item.TEKNİSYEN || "",
+                "SUBE": item.ŞUBE || item["SUBE"] || "",
+                "PART NO": item["PART NO"] || "",
+                "ADET": 1,
+                "İS EMRİ": item["İŞ EMRİ"] || item["İS EMRİ"] || "",
+                "CTS KODU": item["CTS KODU"] || "",
+                "TARİH": item.TARİH || new Date().toLocaleDateString('tr-TR')
+            }));
+        }
+
+        function exportToExcel() {
+            if(!db.dusum.length) { 
+                showToast("Dışa aktarılacak düşüm verisi yok!", "error"); 
+                return; 
+            }
+            let formattedData = formatDataToTargetTemplate(db.dusum);
+            let ws = XLSX.utils.json_to_sheet(formattedData);
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Aksesuar Dusum");
+            XLSX.writeFile(wb, "Aksesuar_Dus_Raporu_Final.xlsx");
+            showToast("📥 7 sütunlu şablon formatında Excel indirildi.");
+        }
+
+        function sendOutlookEmail() {
+            if (!db.dusum.length) {
+                showToast("Mail gönderilecek düşüm listesi boş!", "error");
+                return;
+            }
+
+            exportToExcel();
+
+            let to = "tahsin.kara@bdh.com.tr";
+            let cc = "ilker.e@partner.samsung.com; muzaffer.b@partner.samsung.com; caglar.s@partner.samsung.com; hasan.karaarslan@bdh.com.tr";
+            let subject = "Aksesuar Düşümleri H.K.";
+            let bugunTarih = new Date().toLocaleDateString('tr-TR');
+
+            let body = `Merhaba Tahsin Bey,\n\n`;
+            body += `${bugunTarih} tarihlerinde satılan aksesuarların düşüm Excel dosyası indirildi. Tabloyu kopyalayıp buraya yapıştırabilir veya ekleyebilirsiniz.\n\n`;
+            body += `Desteğinizi rica ederim.\n\n`;
+            body += `Teşekkürler\nİyi çalışmalar`;
+
+            let mailtoLink = `mailto:${encodeURIComponent(to)}` +
+                             `?cc=${encodeURIComponent(cc)}` +
+                             `&subject=${encodeURIComponent(subject)}` +
+                             `&body=${encodeURIComponent(body)}`;
+
+            window.open(mailtoLink, '_self');
+            showToast("📧 Excel dosyanız indirildi ve Outlook taslağı açıldı!");
+        }
+
+        function downloadExampleTemplate(type) {
+            let sampleData = [];
+            let fileName = "Ornek_Sablon.xlsx";
+            if (type === 'dusum') {
+                sampleData = [{
+                    "TEKNİSYEN": "BE AND AYHAN AKLI",
+                    "SUBE": "0002468251",
+                    "PART NO": "F-HA-AKS1001",
+                    "ADET": 1,
+                    "İS EMRİ": "4298405168",
+                    "CTS KODU": "5000200901",
+                    "TARİH": "13.11.2026"
+                }];
+                fileName = "Aksesuar_Dusum_Ornek_Sablon.xlsx";
+            } else {
+                sampleData = [{
+                    "GSPN KODU BEPA": "F-HA-AKS1001",
+                    "GSPN KODU NOV": "F-HA-AKS1001-N",
+                    "CTS KODU": "5000200901",
+                    "Tanım": "Örnek Malzeme"
+                }];
+                fileName = "GSPN_Ornek_Sablon.xlsx";
+            }
+            let ws = XLSX.utils.json_to_sheet(sampleData);
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Sablon");
+            XLSX.writeFile(wb, fileName);
+            showToast("📥 Örnek şablon başarıyla indirildi.");
+        }
+
+        // AKILLI SİPARİŞ & STOK ANALİZ MOTORU
+        function calculateSmartOrders() {
+            let tbody = document.getElementById('bodySmartOrder');
+            if(!tbody) return;
+
+            if(!db.gspnstok.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-rose-600 font-semibold">⚠️ GSPN stok dosyası yüklenmemiş! Lütfen 1. GSPN sekmesinden "GSPN Stok Dosyasını Arka Plana Yükle" butonunu kullanın.</td></tr>`;
+                return;
+            }
+
+            let allSales = [...db.dusum, ...db.arsiv];
+            let salesCountByPart = {};
+            
+            allSales.forEach(item => {
+                let part = normalizeCode(item["PART NO"] || item["PART_NO"] || "");
+                if(!part) return;
+                let family = normalizePartFamily(part);
+                salesCountByPart[family] = (salesCountByPart[family] || 0) + 1;
+            });
+
+            let stockByPart = {};
+            let descByPart = {};
+
+            db.gspnstok.forEach(row => {
+                let techName = String(row.ASC_NAME || "").toUpperCase();
+                if (techName.includes("BE AND")) {
+                    let part = normalizeCode(row.PARTS_CODE);
+                    if(!part) return;
+                    let family = normalizePartFamily(part);
+                    let rawQty = row.AVAILABLE_QTY !== undefined && row.AVAILABLE_QTY !== '' ? row.AVAILABLE_QTY : (row.AVA_STOCK || row.STOCK_QTY || 0);
+                    let qty = Number(String(rawQty).replace(',', '.')) || 0;
+
+                    stockByPart[family] = (stockByPart[family] || 0) + qty;
+                    if(row.PARTS_DESC && !descByPart[family]) {
+                        descByPart[family] = row.PARTS_DESC;
+                    }
+                }
+            });
+
+            let allPartFamilies = new Set([...Object.keys(salesCountByPart), ...Object.keys(stockByPart)]);
+            if(!allPartFamilies.size) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">Analiz edilecek stok veya satış verisi bulunamadı.</td></tr>`;
+                return;
+            }
+
+            let reportData = [];
+            allPartFamilies.forEach(family => {
+                let totalStock = stockByPart[family] || 0;
+                let totalSales = salesCountByPart[family] || 0;
+                let netOrder = totalSales - totalStock;
+                if (netOrder < 0) netOrder = 0;
+
+                let catalogMatch = db.kodlar.find(k => {
+                    let b = normalizeCode(k["GSPN KODU BEPA"]);
+                    let n = normalizeCode(k["GSPN KODU NOV"]);
+                    return b === family || n === family || normalizePartFamily(b) === family || normalizePartFamily(n) === family;
+                });
+
+                let partCode = catalogMatch ? catalogMatch["GSPN KODU BEPA"] : (family + "-N");
+                let description = descByPart[family] || (catalogMatch ? catalogMatch["Tanım"] : "Aksesuar Malzemesi");
+
+                reportData.push({
+                    partCode,
+                    description,
+                    totalStock,
+                    totalSales,
+                    netOrder
+                });
+            });
+
+            reportData.sort((a,b) => b.totalSales - a.totalSales);
+
+            tbody.innerHTML = "";
+            let fragment = document.createDocumentFragment();
+
+            reportData.forEach(item => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50";
+                tr.innerHTML = `
+                    <td class="p-2.5 border font-bold text-indigo-700 font-mono">${item.partCode}</td>
+                    <td class="p-2.5 border">${item.description}</td>
+                    <td class="p-2.5 border text-center font-bold text-slate-700">${item.totalStock}</td>
+                    <td class="p-2.5 border text-center font-bold text-emerald-700">${item.totalSales}</td>
+                    <td class="p-2.5 border text-center font-black text-purple-800 bg-purple-50/50">${item.netOrder}</td>
+                `;
+                fragment.appendChild(tr);
+            });
+            tbody.appendChild(fragment);
+            showToast("📦 Akıllı sipariş ve stok analizi güncellendi!");
+        }
+
+        function exportSmartOrdersToExcel() {
+            let table = document.getElementById('tableSmartOrder');
+            if(!table || db.gspnstok.length === 0) {
+                showToast("Dışa aktarılacak sipariş analizi verisi yok!", "error");
+                return;
+            }
+            let wb = XLSX.utils.table_to_book(table, {sheet: "Akilli Siparis Analizi"});
+            XLSX.writeFile(wb, "BE_AND_Akilli_Siparis_Raporu.xlsx");
+            showToast("📥 Akıllı sipariş raporu Excel olarak indirildi.");
+        }
+
+        function archiveSelectedDailyRowsToFolder() {
+            if(!checkAdminAuth()) return;
+            const checkboxes = document.querySelectorAll('.dusum-checkbox:checked');
+            if(!checkboxes.length) {
+                showToast("Lütfen günlük listeden aktarmak için en az bir satır seçin!", "error");
+                return;
+            }
+
+            let targetFolder = document.getElementById('targetArchiveFolder').value || "Kasım 2026";
+            let bugun = new Date().toLocaleDateString('tr-TR');
+            let existingJobOrders = new Set(db.arsiv.map(item => String(item["İŞ EMRİ"]).trim()));
+            let duplicateList = [];
+            let validRecords = [];
+            let indicesToRemove = [];
+
+            checkboxes.forEach(cb => {
+                let idx = parseInt(cb.getAttribute('data-index'));
+                let item = db.dusum[idx];
+                if (!item) return;
+
+                let jobOrder = String(item["İŞ EMRİ"] || "").trim();
+                if (jobOrder && existingJobOrders.has(jobOrder)) {
+                    duplicateList.push(jobOrder);
+                } else {
+                    if (jobOrder) existingJobOrders.add(jobOrder);
+                    validRecords.push({
+                        "KLASÖR": targetFolder,
+                        "ARŞİV TARİHİ": cleanAndFormatDate(item.TARİH || bugun),
+                        "TEKNİSYEN": item.TEKNİSYEN,
+                        "ŞUBE": item.ŞUBE,
+                        "PART NO": item["PART NO"],
+                        "ADET": 1,
+                        "İŞ EMRİ": jobOrder,
+                        "CTS KODU": item["CTS KODU"],
+                        "DÜŞÜM TARİHİ": cleanAndFormatDate(item.TARİH || bugun),
+                        "AÇIKLAMA": item.AÇIKLAMA
+                    });
+                    indicesToRemove.push(idx);
+                }
+            });
+
+            if (duplicateList.length > 0) {
+                alert(`⚠️ Uyarı: Seçtiğiniz kayıtlardan ${duplicateList.length} tanesi zaten arşivde mevcut olduğu için eklenmedi.`);
+            }
+
+            if (!validRecords.length) {
+                showToast("Aktarılacak yeni kayıt bulunamadı (Tümü zaten arşivde var).", "error");
+                return;
+            }
+
+            db.arsiv = validRecords.concat(db.arsiv);
+            indicesToRemove.sort((a,b) => b - a).forEach(i => db.dusum.splice(i, 1));
+
+            document.getElementById('selectAllDusum').checked = false;
+            renderDusumRows(db.dusum);
+            updateTechnicianDropdown();
+            updateSummaryPanel();
+            updateArchiveFolderDropdown();
+            filterArsivTable();
+            saveToCloud();
+
+            switchTab('tab-arsiv');
+            showToast(`📥 Seçilen ${validRecords.length} kayıt "${targetFolder}" klasörüne başarıyla aktarıldı!`);
+        }
+
+        function loadArchiveExcelFile(input) {
+            let file = input.files[0];
+            if(!file) return;
+            showToast("⏳ Arşiv dosyası işleniyor, lütfen bekleyin...", "success");
+
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let data = new Uint8Array(e.target.result);
+                    let workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    let worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    let json = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+                    
+                    let bugun = new Date().toLocaleDateString('tr-TR');
+                    let existingJobOrders = new Set(db.arsiv.map(item => String(item["İŞ EMRİ"]).trim()));
+                    let duplicates = 0;
+                    let newRecords = [];
+
+                    json.forEach(row => {
+                        let job = String(row["İŞ EMRİ"] || row["İş Emri"] || row["İS EMRİ"] || "").trim();
+                        if (job && existingJobOrders.has(job)) {
+                            duplicates++;
+                        } else {
+                            if (job) existingJobOrders.add(job);
+                            newRecords.push({
+                                "KLASÖR": row["KLASÖR"] || row["Klasör"] || "Kasım 2026",
+                                "ARŞİV TARİHİ": cleanAndFormatDate(row["ARŞİV TARİHİ"] || row["Arşiv Tarihi"] || row["TARİH"] || bugun),
+                                "TEKNİSYEN": row["TEKNİSYEN"] || row["Teknisyen"] || "",
+                                "ŞUBE": row["ŞUBE"] || row["Şube"] || row["SUBE"] || "",
+                                "PART NO": row["PART NO"] || row["Part No"] || "",
+                                "ADET": 1,
+                                "İŞ EMRİ": job,
+                                "CTS KODU": row["CTS KODU"] || row["CTS Kodu"] || "",
+                                "DÜŞÜM TARİHİ": cleanAndFormatDate(row["ARŞİV TARİHİ"] || row["TARİH"] || bugun),
+                                "AÇIKLAMA": row["AÇIKLAMA"] || row["Açıklama"] || ""
+                            });
+                        }
+                    });
+
+                    if (newRecords.length > 0) {
+                        db.arsiv = newRecords.concat(db.arsiv);
+                        updateArchiveFolderDropdown();
+                        filterArsivTable();
+                        saveToCloud();
+                        showToast(`📂 Arşive ${newRecords.length} yeni kayıt yüklendi! (${duplicates} mükerrer atlandı)`);
+                    } else {
+                        showToast("Yüklenen tüm kayıtlar zaten arşivde mevcut.", "error");
+                    }
+                } catch(err) {
+                    showToast(`Arşiv Yükleme Hatası: ${err.message}`, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function updateArchiveFolderDropdown() {
+            let selector = document.getElementById('archiveFolderSelector');
+            let targetSelect = document.getElementById('targetArchiveFolder');
+            if(!selector) return;
+
+            let currentVal = selector.value;
+            let currentTargetPath = targetSelect ? targetSelect.value : "Kasım 2026";
+
+            let folders = [...new Set(db.arsiv.map(item => item["KLASÖR"] || "Kasım 2026"))].filter(Boolean).sort();
+            if(!folders.length) folders = ["Kasım 2026", "Aralık 2026"];
+
+            selector.innerHTML = '<option value="TUMU">📂 Tüm Arşiv (Tüm Klasörler)</option>' + folders.map(f => `<option value="${f}">📁 ${f}</option>`).join('');
+            if ([...selector.options].some(o => o.value === currentVal)) selector.value = currentVal;
+
+            if (targetSelect) {
+                targetSelect.innerHTML = folders.map(f => `<option value="${f}">${f}</option>`).join('');
+                if ([...targetSelect.options].some(o => o.value === currentTargetPath)) targetSelect.value = currentTargetPath;
+            }
+        }
+
+        function createNewArchiveFolder() {
+            if(!checkAdminAuth()) return;
+            let input = document.getElementById('newFolderInput');
+            let folderName = input.value.trim();
+            if(!folderName) {
+                showToast("Lütfen yeni klasör adı yazın!", "error");
+                return;
+            }
+
+            updateArchiveFolderDropdown();
+            document.getElementById('archiveFolderSelector').value = folderName;
+            input.value = "";
+            filterArsivTable();
+            showToast(`📁 "${folderName}" klasörü oluşturuldu.`);
+        }
+
+        function deleteCurrentActiveFolder() {
+            if(!checkAdminAuth()) return;
+            let selector = document.getElementById('archiveFolderSelector');
+            if(!selector) return;
+            let activeFolder = selector.value;
+
+            if(activeFolder === 'TUMU') {
+                showToast("Lütfen silmek için spesifik bir klasör seçin!", "error");
+                return;
+            }
+
+            if(confirm(`⚠️ DİKKAT: "${activeFolder}" klasöründeki TÜM ARŞİV KAYITLARI kalıcı olarak silinecektir. Emin misiniz?`)) {
+                db.arsiv = db.arsiv.filter(item => (item["KLASÖR"] || "Kasım 2026") !== activeFolder);
+                selector.value = 'TUMU';
+                updateArchiveFolderDropdown();
+                filterArsivTable();
+                saveToCloud();
+                showToast(`🗑️ "${activeFolder}" klasörü ve içindeki kayıtlar silindi.`);
+            }
+        }
+
+        function removeDuplicateArchiveOrders() {
+            if(!checkAdminAuth()) return;
+            if(!db.arsiv.length) {
+                showToast("Arşiv boş!", "error");
+                return;
+            }
+
+            let seen = new Set();
+            let uniqueArsiv = [];
+            let removedCount = 0;
+
+            db.arsiv.forEach(item => {
+                let job = String(item["İŞ EMRİ"] || "").trim();
+                if (!job) {
+                    uniqueArsiv.push(item);
+                } else if (!seen.has(job)) {
+                    seen.add(job);
+                    uniqueArsiv.push(item);
+                } else {
+                    removedCount++;
+                }
+            });
+
+            if (removedCount > 0) {
+                db.arsiv = uniqueArsiv;
+                updateArchiveFolderDropdown();
+                filterArsivTable();
+                saveToCloud();
+                showToast(`🧹 Arşivdeki ${removedCount} adet çift iş emri temizlendi!`);
+            } else {
+                showToast("Arşivde çift iş emri bulunmuyor.");
+            }
+        }
+
+        function filterArsivTable() {
+            let query = (document.getElementById('searchArsiv').value || "").toUpperCase();
+            let selectedFolder = document.getElementById('archiveFolderSelector')?.value || 'TUMU';
+            let startDate = document.getElementById('filterDateStart').value;
+            let endDate = document.getElementById('filterDateEnd').value;
+
+            currentFilteredArsivData = db.arsiv.filter(row => {
+                let folderName = row["KLASÖR"] || "Kasım 2026";
+                let matchFolder = (selectedFolder === 'TUMU' || folderName === selectedFolder);
+                let textMatch = JSON.stringify(row).toUpperCase().includes(query);
+                let rowDateFormatted = cleanAndFormatDate(row["ARŞİV TARİHİ"]);
+                let rowIso = parseToIsoDate(rowDateFormatted);
+                
+                let dateMatch = true;
+                if (startDate && rowIso < startDate) dateMatch = false;
+                if (endDate && rowIso > endDate) dateMatch = false;
+
+                return matchFolder && textMatch && dateMatch;
+            });
+
+            renderArsivRows(currentFilteredArsivData);
+        }
+
+        function clearDateFilter() {
+            let startEl = document.getElementById('filterDateStart');
+            let endEl = document.getElementById('filterDateEnd');
+            let searchEl = document.getElementById('searchArsiv');
+            let folderEl = document.getElementById('archiveFolderSelector');
+            
+            if(startEl) startEl.value = "";
+            if(endEl) endEl.value = "";
+            if(searchEl) searchEl.value = "";
+            if(folderEl) folderEl.value = "TUMU";
+            
+            currentFilteredArsivData = [...db.arsiv];
+            renderArsivRows(db.arsiv);
+            showToast("🧹 Filtreler temizlendi.");
+        }
+
+        function renderArsivRows(dataList) {
+            let tbody = document.getElementById('bodyArsiv');
+            let countEl = document.getElementById('arsivRecordCount');
+            if(!tbody) return;
+            tbody.innerHTML = "";
+            if(countEl) countEl.innerText = dataList.length;
+
+            if(!dataList || !dataList.length) {
+                tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-slate-400">Arşivde aranan şartlara uygun kayıt bulunmuyor.</td></tr>`;
+                return;
+            }
+
+            let renderList = dataList.slice(0, 300);
+            let fragment = document.createDocumentFragment();
+
+            renderList.forEach((item) => {
+                let realIndex = db.arsiv.indexOf(item);
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50";
+                tr.innerHTML = `
+                    <td class="p-2 border text-center"><input type="checkbox" class="arsiv-checkbox w-4 h-4" data-index="${realIndex}"></td>
+                    <td class="p-2 border font-bold text-indigo-700">📁 ${item["KLASÖR"] || "Kasım 2026"}</td>
+                    <td class="p-2 border font-semibold text-purple-700">${item["ARŞİV TARİHİ"] || ''}</td>
+                    <td class="p-2 border font-semibold">${item.TEKNİSYEN || ''}</td>
+                    <td class="p-2 border font-semibold text-blue-600">${item["ŞUBE"] || item["SUBE"] || ''}</td>
+                    <td class="p-2 border font-semibold text-emerald-600">${item["PART NO"] || ''}</td>
+                    <td class="p-2 border text-center font-bold">1</td>
+                    <td class="p-2 border font-mono font-bold">${item["İŞ EMRİ"] || item["İS EMRİ"] || ''}</td>
+                    <td class="p-2 border font-mono">${item["CTS KODU"] || ''}</td>
+                    <td class="p-2 border truncate max-w-xs" title="${item.AÇIKLAMA || ''}">${item.AÇIKLAMA || ''}</td>
+                    <td class="p-2 border text-center">
+                        <button onclick="deleteSingleArsivRow(${realIndex})" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-1 rounded text-xs font-bold transition">Sil</button>
+                    </td>
+                `;
+                fragment.appendChild(tr);
+            });
+            tbody.appendChild(fragment);
+
+            if(dataList.length > 300) {
+                let infoTr = document.createElement('tr');
+                infoTr.innerHTML = `<td colspan="11" class="p-3 text-center text-amber-700 bg-amber-50 font-semibold">⚠️ Performans amacıyla ilk 300 kayıt gösteriliyor. Tümünü görmek için arama yapın veya filtreleyin (Toplam: ${dataList.length} kayıt).</td>`;
+                tbody.appendChild(infoTr);
+            }
+        }
+
+        function toggleSelectAllArsiv(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.arsiv-checkbox');
+            checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+        }
+
+        function deleteSingleArsivRow(index) {
+            if(!checkAdminAuth()) return;
+            if(confirm("Bu arşiv kaydını silmek istediğinize emin misiniz?")) {
+                db.arsiv.splice(index, 1);
+                updateArchiveFolderDropdown();
+                filterArsivTable();
+                saveToCloud();
+                showToast("Arşiv kaydı silindi.");
+            }
+        }
+
+        function deleteSelectedArchiveRows() {
+            if(!checkAdminAuth()) return;
+            const checkboxes = document.querySelectorAll('.arsiv-checkbox:checked');
+            if(!checkboxes.length) {
+                showToast("Lütfen silmek için arşivden en az bir kayıt seçin!", "error");
+                return;
+            }
+
+            if(confirm(`Seçilen ${checkboxes.length} adet arşiv kaydını silmek istediğinize emin misiniz?`)) {
+                let indicesToDelete = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-index'))).sort((a,b) => b - a);
+                indicesToDelete.forEach(idx => db.arsiv.splice(idx, 1));
+                
+                document.getElementById('selectAllArsiv').checked = false;
+                updateArchiveFolderDropdown();
+                filterArsivTable();
+                saveToCloud();
+                showToast(`Seçilen ${indicesToDelete.length} arşiv kaydı silindi.`);
+            }
+        }
+
+        function openArchiveAnalyticsModal() {
+            let modal = document.getElementById('archiveAnalyticsModal');
+            let content = document.getElementById('analyticsContent');
+            modal.classList.remove('hidden');
+
+            let targetData = currentFilteredArsivData.length > 0 ? currentFilteredArsivData : db.arsiv;
+            if(!targetData.length) {
+                content.innerHTML = '<p class="text-slate-400">Analiz edilecek arşiv verisi bulunmuyor.</p>';
+                return;
+            }
+
+            let folderStats = {};
+            let techStats = {};
+            let partStats = {};
+
+            targetData.forEach(item => {
+                let folder = item["KLASÖR"] || "Genel";
+                let tech = item["TEKNİSYEN"] || "Bilinmiyor";
+                let part = item["PART NO"] || "Bilinmiyor";
+
+                folderStats[folder] = (folderStats[folder] || 0) + 1;
+                techStats[tech] = (techStats[tech] || 0) + 1;
+                partStats[part] = (partStats[part] || 0) + 1;
+            });
+
+            let html = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100">
+                    <h4 class="font-bold text-indigo-900 mb-2">📁 Klasör Dağılımı</h4>
+                    <ul class="space-y-1">`;
+            Object.entries(folderStats).forEach(([f, count]) => {
+                html += `<li class="flex justify-between"><span>${f}</span><b class="text-indigo-700">${count} Adet</b></li>`;
+            });
+            html += `</ul></div>`;
+
+            html += `<div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                    <h4 class="font-bold text-emerald-900 mb-2">👤 Teknisyen Bazlı Satışlar</h4>
+                    <ul class="space-y-1 max-h-48 overflow-y-auto">`;
+            Object.entries(techStats).sort((a,b)=>b[1]-a[1]).forEach(([t, count]) => {
+                html += `<li class="flex justify-between"><span class="truncate max-w-[150px]" title="${t}">${t}</span><b class="text-emerald-700">${count}</b></li>`;
+            });
+            html += `</ul></div>`;
+
+            html += `<div class="bg-purple-50 p-3 rounded-xl border border-purple-100">
+                    <h4 class="font-bold text-purple-900 mb-2">📦 Parça Bazlı Satışlar</h4>
+                    <ul class="space-y-1 max-h-48 overflow-y-auto">`;
+            Object.entries(partStats).sort((a,b)=>b[1]-a[1]).forEach(([p, count]) => {
+                html += `<li class="flex justify-between"><span>${p}</span><b class="text-purple-700">${count}</b></li>`;
+            });
+            html += `</ul></div>`;
+
+            html += `</div>`;
+            content.innerHTML = html;
+        }
+
+        function closeArchiveAnalyticsModal() {
+            document.getElementById('archiveAnalyticsModal').classList.add('hidden');
+        }
+
+        function exportArsivFilteredToExcel() {
+            let targetData = currentFilteredArsivData.length > 0 ? currentFilteredArsivData : db.arsiv;
+            if(!targetData.length) {
+                showToast("İndirilecek arşiv verisi bulunmuyor!", "error");
+                return;
+            }
+            let formattedData = formatDataToTargetTemplate(targetData);
+            let ws = XLSX.utils.json_to_sheet(formattedData);
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Filtreli Arsiv");
+            
+            let activeFolder = document.getElementById('archiveFolderSelector')?.value || 'Arsiv';
+            XLSX.writeFile(wb, `Aksesuar_Arsiv_${activeFolder.replace(/\s+/g, '_')}.xlsx`);
+            showToast(`📥 ${targetData.length} kayıt Excel olarak indirildi!`);
+        }
+
+        function exportArsivToExcel() {
+            if(!db.arsiv.length) {
+                showToast("Arşivde indirilecek veri yok!", "error");
+                return;
+            }
+            let formattedData = formatDataToTargetTemplate(db.arsiv);
+            let ws = XLSX.utils.json_to_sheet(formattedData);
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Tum Gecmis Arsiv");
+            XLSX.writeFile(wb, "Aksesuar_Gecmis_Arsiv_Tum.xlsx");
+            showToast("Tüm Arşiv Excel olarak indirildi.");
+        }
+
+        function loadMultipleExcelFiles(input, targetKey) {
+            let files = input.files;
+            if(!files || files.length === 0) return;
+            
+            showToast(`⏳ ${targetKey.toUpperCase()} dosyaları okunuyor...`, "success");
+            
+            setTimeout(() => {
+                let allRows = [];
+                let loadedCount = 0;
+                Array.from(files).forEach(file => {
+                    let reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            let data = new Uint8Array(e.target.result);
+                            let workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                            let worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                            let json = parseGspnWorksheet(worksheet);
+                            allRows = allRows.concat(json);
+                            loadedCount++;
+                            
+                            if(loadedCount === files.length) {
+                                db[targetKey] = allRows;
+                                renderTableFast(targetKey);
+                                showToast(`✅ Toplam ${allRows.length} GSPN kaydı hafızaya alındı!`);
+                            }
+                        } catch(err) { 
+                            showToast(`Hata: ${err.message}`, 'error'); 
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            }, 50);
+        }
+
+        function loadBackgroundGspnStock(input) {
+            let file = input.files[0];
+            if(!file) return;
+            
+            showToast("⏳ GSPN stok dosyası arka planda yükleniyor...", "success");
+            
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let data = new Uint8Array(e.target.result);
+                    let workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    let worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    let json = XLSX.utils.sheet_to_json(worksheet, {defval: '', raw: false});
+                    db.gspnstok = json.map(normalizeGspnStockRow);
+                    
+                    document.getElementById('stokStatusText').innerText = `✅ Yüklendi (${db.gspnstok.length} kayıt)`;
+                    document.getElementById('stokStatusText').className = "text-xs font-semibold text-emerald-600";
+                    renderTechnicianStockTable();
+                    refreshCatalogTechnicianOptions();
+                    showToast(`✅ ${db.gspnstok.length} GSPN stok kaydı arka plana başarıyla yüklendi!`);
+                } catch(err) {
+                    showToast(`Stok Yükleme Hatası: ${err.message}`, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderTableFast(key) {
+            let data = db[key];
+            let headerTr = document.getElementById('header' + capitalize(key));
+            let bodyTbody = document.getElementById('body' + capitalize(key));
+            if(!headerTr || !bodyTbody) return;
+
+            headerTr.innerHTML = "";
+            bodyTbody.innerHTML = "";
+
+            if(!data || !data.length) {
+                bodyTbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Veri bulunmuyor.</td></tr>`;
+                return;
+            }
+
+            let keys = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+            keys.forEach(k => {
+                headerTr.innerHTML += `<th class="p-2.5 border bg-slate-100 font-semibold">${k}</th>`;
+            });
+
+            let fragment = document.createDocumentFragment();
+            data.slice(0, 100).forEach(row => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50";
+                keys.forEach(k => {
+                    let val = row[k] !== undefined ? row[k] : "";
+                    let td = document.createElement('td');
+                    td.className = "p-2 border truncate max-w-xs";
+                    td.title = val;
+                    td.innerText = val;
+                    tr.appendChild(td);
+                });
+                fragment.appendChild(tr);
+            });
+            bodyTbody.appendChild(fragment);
+        }
+
+        function normalizePartFamily(value) {
+            return normalizeCode(value).replace(/-N$/, '');
+        }
+
+        function getCatalogPartCodes(partCode, ctsCode = '') {
+            const part = normalizeCode(partCode);
+            const family = normalizePartFamily(part);
+            const cts = normalizeCode(ctsCode);
+            
+            const catalog = db.kodlar.find(k => {
+                const codes = [k['GSPN KODU BEPA'], k['GSPN KODU NOV'], k['GSPN KODU NOVA'], k['CTS KODU']].map(v => normalizeCode(v)).filter(Boolean);
+                return codes.some(code => code === part || normalizePartFamily(code) === family || (cts && code === cts));
+            });
+
+            const codes = new Set([
+                part, 
+                family, 
+                family ? family + '-N' : '', 
+                cts,
+                normalizeCode(catalog?.['GSPN KODU BEPA']),
+                normalizeCode(catalog?.['GSPN KODU NOV']),
+                normalizeCode(catalog?.['GSPN KODU NOVA']),
+                normalizeCode(catalog?.['CTS KODU'])
+            ].filter(Boolean));
+
+            return codes;
+        }
+
+        function getTechnicianPartStockMatches(technicianCode, partCode, ctsCode = '') {
+            const tech = normalizeCode(technicianCode, 10);
+            if (!tech || !normalizeCode(partCode)) return [];
+            const acceptedCodes = getCatalogPartCodes(partCode, ctsCode);
+            
+            return db.gspnstok.filter(r => {
+                const rTech = normalizeCode(r.ASC_CODE, 10);
+                const rPart = normalizeCode(r.PARTS_CODE);
+                const rPartFamily = normalizePartFamily(rPart);
+                
+                if (rTech !== tech) return false;
+                if (acceptedCodes.has(rPart)) return true;
+                
+                for (let code of acceptedCodes) {
+                    if (rPartFamily === normalizePartFamily(code)) return true;
+                }
+                return false;
+            });
+        }
+
+        function getTechnicianActualStockCodeAndQty(technicianCode, partCode, ctsCode = '') {
+            const matches = getTechnicianPartStockMatches(technicianCode, partCode, ctsCode);
+            if (!matches.length) return { qty: 0, code: partCode };
+
+            let totalQty = 0;
+            let matchedCode = partCode;
+
+            matches.forEach(r => {
+                const rPart = normalizeCode(r.PARTS_CODE);
+                const rawQty = r.AVAILABLE_QTY !== undefined && r.AVAILABLE_QTY !== '' ? r.AVAILABLE_QTY : (r.AVA_STOCK || r.STOCK_QTY || 0);
+                const qty = Number(String(rawQty).replace(',', '.')) || 0;
+                totalQty += qty;
+                if (qty > 0) matchedCode = rPart;
+            });
+
+            return { qty: totalQty, code: matchedCode };
+        }
+
+        function renderTechnicianStockTable() {
+            const tbody = document.getElementById('bodyTeknisyenStok');
+            if (!tbody) return;
+            if (!db.gspnstok.length) { tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-400">Arka planda GSPN stok dosyası yüklenmedi.</td></tr>'; refreshCatalogTechnicianOptions(); return; }
+            
+            const q = (document.getElementById('searchTeknisyenStok')?.value || '').trim().toLocaleUpperCase('tr-TR');
+            const rows = db.gspnstok.filter(r => {
+                const hay = [r.ASC_CODE, r.ASC_NAME, r.PARTS_CODE, r.PARTS_DESC].join(' ').toLocaleUpperCase('tr-TR');
+                return !q || hay.includes(q);
+            }).sort((a,b) => String(a.ASC_NAME || a.ASC_CODE).localeCompare(String(b.ASC_NAME || b.ASC_CODE), 'tr') || String(a.PARTS_CODE).localeCompare(String(b.PARTS_CODE)));
+            
+            if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-400">Eşleşen stok bulunamadı.</td></tr>'; refreshCatalogTechnicianOptions(); return; }
+            
+            tbody.innerHTML = rows.map((r, idx) => {
+                const qty = r.AVAILABLE_QTY !== undefined && r.AVAILABLE_QTY !== '' ? r.AVAILABLE_QTY : (r.AVA_STOCK || r.STOCK_QTY || 0);
+                const originalIndex = db.gspnstok.indexOf(r);
+                return `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-2.5 border text-center"><input type="checkbox" class="stock-checkbox w-4 h-4" data-index="${originalIndex}"></td>
+                        <td class="p-2 border font-mono">${r.ASC_CODE || ''}</td>
+                        <td class="p-2 border font-semibold">${r.ASC_NAME || ''}</td>
+                        <td class="p-2 border font-mono text-indigo-700">${r.PARTS_CODE || ''}</td>
+                        <td class="p-2 border">${r.PARTS_DESC || ''}</td>
+                        <td class="p-2 border text-center font-bold">${qty}</td>
+                        <td class="p-2 border text-center">
+                            <button onclick="deleteSingleStock(${originalIndex})" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-1 rounded text-xs font-bold transition">Sil</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            refreshCatalogTechnicianOptions();
+        }
+
+        function toggleSelectAllStock(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.stock-checkbox');
+            checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+        }
+
+        function deleteSingleStock(index) {
+            if(!checkAdminAuth()) return;
+            if(confirm("Bu stok kaydını silmek istediğinize emin misiniz?")) {
+                db.gspnstok.splice(index, 1);
+                renderTechnicianStockTable();
+                showToast("Stok kaydı silindi.");
+            }
+        }
+
+        function deleteSelectedTechnicianStock() {
+            if(!checkAdminAuth()) return;
+            const checkboxes = document.querySelectorAll('.stock-checkbox:checked');
+            if(!checkboxes.length) {
+                showToast("Lütfen silmek için en az bir stok seçin!", "error");
+                return;
+            }
+
+            if(confirm(`Seçilen ${checkboxes.length} adet stok kaydını silmek istediğinize emin misiniz?`)) {
+                let indicesToDelete = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-index'))).sort((a,b) => b - a);
+                indicesToDelete.forEach(idx => db.gspnstok.splice(idx, 1));
+                
+                document.getElementById('selectAllStock').checked = false;
+                renderTechnicianStockTable();
+                showToast(`Seçilen ${indicesToDelete.length} stok kaydı silindi.`);
+            }
+        }
+
+        function refreshCatalogTechnicianOptions() {
+            const select = document.getElementById('catalogTechnicianSelect');
+            if (!select) return;
+            const current = select.value;
+            const techs = [...db.teknisyen].sort((a,b) => String(a['ASC Name'] || '').localeCompare(String(b['ASC Name'] || ''), 'tr'));
+            select.innerHTML = '<option value="">Teknisyen seçin</option>' + techs.map(t => {
+                const code = normalizeCode(t['Ship To Code'], 10);
+                const name = t['ASC Name'] || code;
+                return `<option value="${code}">${name} (${code})</option>`;
+            }).join('');
+            if ([...select.options].some(o => o.value === current)) select.value = current;
+        }
+
+        function addNewAksesuarKodu() {
+            if(!checkAdminAuth()) return;
+            let bepa = document.getElementById('newBepa').value.trim();
+            let nova = document.getElementById('newNova').value.trim();
+            let cts = document.getElementById('newCts').value.trim();
+            let tanim = document.getElementById('newTanim').value.trim();
+
+            if(!bepa && !nova) {
+                showToast("Lütfen en az bir GSPN Kodu girin!", "error");
+                return;
+            }
+
+            db.kodlar.push({
+                "GSPN KODU BEPA": bepa,
+                "GSPN KODU NOV": nova,
+                "CTS KODU": cts,
+                "Tanım": tanim
+            });
+
+            renderTableFast('kodlar');
+            saveToCloud();
+            document.getElementById('newBepa').value = "";
+            document.getElementById('newNova').value = "";
+            document.getElementById('newCts').value = "";
+            document.getElementById('newTanim').value = "";
+            showToast("✅ Yeni aksesuar kodu kataloğa eklendi ve buluta kaydedildi!");
+        }
+
+        function addNewTeknisyenRecord() {
+            if(!checkAdminAuth()) return;
+            let name = document.getElementById('newTeknisyenName').value.trim();
+            let ship = document.getElementById('newShipCode').value.trim();
+            let sold = document.getElementById('newSoldCode').value.trim();
+
+            if(!name || !ship) {
+                showToast("Teknisyen Adı ve Ship To Code alanları zorunludur!", "error");
+                return;
+            }
+
+            if(ship.length < 10) ship = ship.padStart(10, '0');
+
+            db.teknisyen.push({
+                "NO": 1,
+                "Ship To Code": ship,
+                "Sold To Code": sold,
+                "ASC Name": name.toUpperCase()
+            });
+
+            renderTableFast('teknisyen');
+            saveToCloud();
+            document.getElementById('newTeknisyenName').value = "";
+            document.getElementById('newShipCode').value = "";
+            document.getElementById('newSoldCode').value = "";
+            showToast("✅ Yeni teknisyen eklendi ve buluta kaydedildi!");
+        }
+
+        function loadOldDusumFile(input) {
+            let file = input.files[0];
+            if(!file) return;
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let data = new Uint8Array(e.target.result);
+                    let workbook = XLSX.read(data, {type: 'array'});
+                    let sheetName = workbook.SheetNames[0];
+                    let worksheet = workbook.Sheets[sheetName];
+                    let json = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+                    
+                    db.dusum = json.map(row => {
+                        let rawW = row["İŞ EMRİ"] || row["İş Emri"] || row["İS EMRİ"] || "";
+                        let rawD = row["TARİH"] || row["Tarih"] || "";
+                        let parsed = extractJobAndDate(rawW, rawD);
+
+                        return {
+                            TEKNİSYEN: row["TEKNİSYEN"] || row["Teknisyen"] || "",
+                            ŞUBE: row["ŞUBE"] || row["Şube"] || row["SUBE"] || "",
+                            "PART NO": row["PART NO"] || row["Part No"] || "",
+                            ADET: 1,
+                            "İŞ EMRİ": parsed.jobOrder,
+                            "CTS KODU": row["CTS KODU"] || row["CTS Kodu"] || "",
+                            TARİH: parsed.formattedDate,
+                            AÇIKLAMA: row["AÇIKLAMA"] || row["Açıklama"] || "",
+                            "STOK (I)": row["STOK KONTROL (I SÜTUNU)"] || row["STOK (I)"] || ""
+                        };
+                    });
+
+                    renderDusumRows(db.dusum);
+                    updateTechnicianDropdown();
+                    updateSummaryPanel();
+                    saveToCloud();
+                    switchTab('tab-dusum');
+                    showToast(`📂 Eski liste yüklendi ve buluta kaydedildi! Toplam ${db.dusum.length} kayıt.`);
+                } catch(err) {
+                    showToast(`Hata: ${err.message}`, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderTable(key) {
+            renderTableFast(key);
+        }
+
+        function filterTable(key) {
+            let searchInput = document.getElementById('search' + capitalize(key));
+            if(!searchInput) return;
+            let query = searchInput.value.toUpperCase();
+            let data = db[key];
+            let bodyTbody = document.getElementById('body' + capitalize(key));
+            bodyTbody.innerHTML = "";
+            
+            if(!data || !data.length) return;
+            let filtered = data.filter(row => JSON.stringify(row).toUpperCase().includes(query));
+            let keys = Object.keys(data[0]).filter(k => !k.startsWith('_'));
+
+            let fragment = document.createDocumentFragment();
+            filtered.slice(0, 100).forEach(row => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50";
+                keys.forEach(k => {
+                    let val = row[k] !== undefined ? row[k] : "";
+                    let td = document.createElement('td');
+                    td.className = "p-2 border truncate max-w-xs";
+                    td.title = val;
+                    td.innerText = val;
+                    tr.appendChild(td);
+                });
+                fragment.appendChild(tr);
+            });
+            bodyTbody.appendChild(fragment);
+        }
+
+        function capitalize(s) {
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        function extractWhatsAppOrders() {
+            let text = document.getElementById('waInput').value;
+            let lines = text.split('\n');
+            db.whatsapp = [];
+
+            lines.forEach(line => {
+                let lineStr = line.trim();
+                if(lineStr !== "") {
+                    let senderName = "BİLİNMEYEN";
+                    let senderMatch = lineStr.match(/\]\s*([^:-]+)(?=\s*:|isaretledi|ayrilma)/i) || lineStr.match(/\]\s*([^:]+):/);
+                    if (senderMatch && senderMatch[1]) {
+                        let cleanedName = senderMatch[1].trim().toUpperCase();
+                        if (cleanedName && !cleanedName.startsWith("http") && cleanedName.length < 30) {
+                            senderName = cleanedName;
+                        }
+                    }
+
+                    let cleanedLine = lineStr.replace(/\[.*?\]\s*[^:]+:\s*/g, '').trim();
+                    let orderMatch = cleanedLine.match(/\b4\d{9}\b/);
+                    if (orderMatch) {
+                        let isEmri = orderMatch[0];
+                        let isNova = cleanedLine.toUpperCase().includes("NOVA") || cleanedLine.toUpperCase().includes("-N");
+                        let remaining = cleanedLine.replace(isEmri, '').trim();
+                        
+                        let bulunanPartNo = "Bulunamadı";
+                        let ctsKodu = "";
+                        let tanim = "";
+
+                        let fullCodeMatch = remaining.match(/(F-[A-Z0-9-]+)/i);
+                        if (fullCodeMatch) {
+                            let rawFullCode = fullCodeMatch[1].toUpperCase();
+                            let target = db.kodlar.find(k => {
+                                let Bepa = String(k["GSPN KODU BEPA"] || "").toUpperCase();
+                                let Nov = String(k["GSPN KODU NOV"] || "").toUpperCase();
+                                return Bepa === rawFullCode || Nov === rawFullCode || Bepa.includes(rawFullCode) || Nov.includes(rawFullCode);
+                            });
+
+                            if (target) {
+                                bulunanPartNo = rawFullCode.includes("-N") ? target["GSPN KODU NOV"] : target["GSPN KODU BEPA"];
+                                ctsKodu = target["CTS KODU"];
+                                tanim = target["Tanım"];
+                            } else {
+                                bulunanPartNo = rawFullCode;
+                            }
+                        } else {
+                            let shortCodeMatch = remaining.match(/([A-Z0-9]{3,8})/i);
+                            if (shortCodeMatch) {
+                                let rawCode = shortCodeMatch[1].toUpperCase();
+                                let target = db.kodlar.find(k => {
+                                    let Bepa = String(k["GSPN KODU BEPA"] || "").toUpperCase();
+                                    let Nov = String(k["GSPN KODU NOV"] || "").toUpperCase();
+                                    return Bepa.includes(rawCode) || Nov.includes(rawCode);
+                                });
+
+                                if (target) {
+                                    bulunanPartNo = isNova ? target["GSPN KODU NOV"] : target["GSPN KODU BEPA"];
+                                    ctsKodu = target["CTS KODU"];
+                                    tanim = target["Tanım"];
+                                } else {
+                                    bulunanPartNo = isNova ? `F-HA-AKS${rawCode}-N` : `F-HA-AKS${rawCode}`;
+                                }
+                            }
+                        }
+
+                        db.whatsapp.push({
+                            "GÖNDEREN": senderName,
+                            "A Sütunu (İş Emri)": isEmri,
+                            "B Sütunu (Aksesuar Kodu)": bulunanPartNo,
+                            "CTS KODU": ctsKodu,
+                            "TANIM": tanim
+                        });
+                    }
+                }
+            });
+
+            let tbody = document.getElementById('bodyWhatsapp');
+            tbody.innerHTML = "";
+            if(!db.whatsapp.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">İş emri bulunamadı.</td></tr>`;
+                showToast("10 haneli iş emri tespit edilemedi.", "error");
+                return;
+            }
+
+            db.whatsapp.forEach(item => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-2 border font-semibold text-blue-700">${item["GÖNDEREN"]}</td>
+                        <td class="p-2 border font-bold text-indigo-600 font-mono">${item["A Sütunu (İş Emri)"]}</td>
+                        <td class="p-2 border font-bold text-emerald-600">${item["B Sütunu (Aksesuar Kodu)"]}</td>
+                        <td class="p-2 border">${item["CTS KODU"]}</td>
+                        <td class="p-2 border truncate max-w-xs" title="${item["TANIM"]}">${item["TANIM"]}</td>
+                    </tr>
+                `;
+            });
+            showToast(`Toplam ${db.whatsapp.length} adet WhatsApp mesajı ayrıştırıldı!`);
+        }
+
+        function runSingleClickWorkflow() {
+            if(!checkAdminAuth()) return;
+            if (!db.gspn.length) {
+                showToast("Lütfen önce 1. GSPN sekmesinden servis dosyası yükleyin!", "error");
+                return;
+            }
+            
+            showToast("⚡ Tek tuş ile GSPN verileri eşleştiriliyor...", "success");
+
+            setTimeout(() => {
+                db.dusum = [];
+                const unique = new Map();
+                
+                db.gspn.forEach(row => {
+                    const techName = String(row._GSPN_TECH_NAME ?? row.E ?? '').trim();
+                    if (!techName.toLocaleUpperCase('tr-TR').includes('BE AND')) return;
+                    const techCode = normalizeCode(row._GSPN_TECH_CODE ?? row.D ?? '', 10);
+                    const rawDate = row._GSPN_DATE ?? row.A ?? '';
+                    const rawWork = row._GSPN_WORK_ORDER ?? row.B ?? '';
+                    const parsed = extractJobAndDate(rawWork, rawDate);
+                    
+                    const rowText = Object.values(row).join(" ").toUpperCase();
+                    let partCodes = [];
+                    let fMatches = rowText.match(/\bF-[A-Z0-9\-]+\b/g);
+                    if (fMatches) {
+                        partCodes = [...new Set(fMatches)];
+                    } else {
+                        const candidates = [row._GSPN_ACCESSORY_1 ?? row.AS, row._GSPN_ACCESSORY_2 ?? row.AT, row._GSPN_ACCESSORY_3 ?? row.AU];
+                        partCodes = [...new Set(candidates.map(v => extractAksCode(String(v || '').trim())).filter(Boolean))];
+                    }
+                    if (!partCodes.length) return;
+                    
+                    partCodes.forEach(part => {
+                        const catalog = db.kodlar.find(k => [k['GSPN KODU BEPA'], k['GSPN KODU NOV'], k['GSPN KODU NOVA']].some(v => normalizeCode(v) === normalizeCode(part)));
+                        const finalPart = catalog?.['GSPN KODU BEPA'] || part;
+                        
+                        const key = [parsed.jobOrder, finalPart].join('|');
+                        if (!unique.has(key)) {
+                            unique.set(key, { techName, techCode, partNo: finalPart, qty: 1, jobOrder: parsed.jobOrder, date: cleanAndFormatDate(rawDate || parsed.formattedDate) });
+                        }
+                    });
+                });
+
+                if (!unique.size) {
+                    renderDusumRows([]);
+                    showToast('GSPN dosyasında BE AND teknisyeni ve geçerli aksesuar kodu eşleşmesi bulunamadı.', 'error');
+                    return;
+                }
+
+                unique.forEach(item => {
+                    const catalog = db.kodlar.find(k => [k['GSPN KODU BEPA'], k['GSPN KODU NOV'], k['GSPN KODU NOVA']].some(v => normalizeCode(v) === normalizeCode(item.partNo)));
+                    const cts = catalog?.['CTS KODU'] || '';
+                    const description = catalog?.['Tanım'] || '';
+                    const techCode = normalizeCode(item.techCode, 10);
+                    const partCode = normalizeCode(item.partNo);
+                    
+                    const stockDetail = getTechnicianActualStockCodeAndQty(techCode, partCode, cts);
+                    const finalPartNo = stockDetail.code || item.partNo;
+                    const stock = stockDetail.qty;
+
+                    db.dusum.push({
+                        TEKNİSYEN: item.techName,
+                        ŞUBE: techCode,
+                        'PART NO': finalPartNo,
+                        ADET: 1,
+                        'İŞ EMRİ': item.jobOrder,
+                        'CTS KODU': cts,
+                        TARİH: item.date,
+                        AÇIKLAMA: description,
+                        'STOK (I)': finalPartNo,
+                        'TEKNİSYEN STOĞU': stock
+                    });
+                });
+
+                db.dusum.sort((a, b) => String(b["İŞ EMRİ"]).localeCompare(String(a["İŞ EMRİ"])));
+
+                renderDusumRows(db.dusum);
+                renderTechnicianStockTable();
+                updateTechnicianDropdown();
+                updateSummaryPanel();
+                refreshCatalogTechnicianOptions();
+                saveToCloud();
+                switchTab('tab-dusum');
+                showToast(`🚀 İşlem tamamlandı! ${db.dusum.length} kayıt sıralandı ve buluta kaydedildi.`);
+            }, 50);
+        }
+
+        function runCrossCheck() {
+            if(!checkAdminAuth()) return;
+            if(!db.dusum.length && !db.whatsapp.length) {
+                showToast("Lütfen önce verileri girin!", "error");
+                return;
+            }
+
+            let gspnOrders = new Set(db.dusum.map(d => String(d["İŞ EMRİ"]).trim()));
+            let waOrders = new Set(db.whatsapp.map(w => String(w["A Sütunu (İş Emri)"]).trim()));
+
+            let gspnOnly = db.dusum.filter(d => !waOrders.has(String(d["İŞ EMRİ"]).trim()));
+            let waOnly = db.whatsapp.filter(w => !gspnOrders.has(String(w["A Sütunu (İş Emri)"]).trim()));
+
+            let bodyGspnOnly = document.getElementById('bodyGspnOnly');
+            bodyGspnOnly.innerHTML = "";
+            document.getElementById('badgeGspnOnly').innerText = gspnOnly.length;
+            if(gspnOnly.length === 0) {
+                bodyGspnOnly.innerHTML = `<tr><td colspan="3" class="p-3 text-center text-emerald-600 font-semibold">Eksik yok.</td></tr>`;
+            } else {
+                gspnOnly.forEach(item => {
+                    bodyGspnOnly.innerHTML += `
+                        <tr>
+                            <td class="p-2 border font-mono font-bold">${item["İŞ EMRİ"]}</td>
+                            <td class="p-2 border text-emerald-700">${item["PART NO"]}</td>
+                            <td class="p-2 border">${item.TEKNİSYEN}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            let bodyWaOnly = document.getElementById('bodyWaOnly');
+            bodyWaOnly.innerHTML = "";
+            document.getElementById('badgeWaOnly').innerText = waOnly.length;
+            if(waOnly.length === 0) {
+                bodyWaOnly.innerHTML = `<tr><td colspan="3" class="p-3 text-center text-emerald-600 font-semibold">Eksik yok.</td></tr>`;
+            } else {
+                waOnly.forEach(item => {
+                    bodyWaOnly.innerHTML += `
+                        <tr>
+                            <td class="p-2 border font-semibold text-blue-700">${item["GÖNDEREN"]}</td>
+                            <td class="p-2 border font-mono font-bold">${item["A Sütunu (İş Emri)"]}</td>
+                            <td class="p-2 border text-rose-700">${item["B Sütunu (Aksesuar Kodu)"]}</td>
+                        </tr>
+                    `;
+                });
+
+                waOnly.forEach(waItem => {
+                    let senderName = waItem["GÖNDEREN"];
+                    let jobOrder = waItem["A Sütunu (İş Emri)"];
+                    let partNo = waItem["B Sütunu (Aksesuar Kodu)"];
+                    let cts = waItem["CTS KODU"] || "";
+                    let tanim = waItem["TANIM"] || "";
+
+                    let matchedTech = db.teknisyen.find(t => String(t["ASC Name"] || "").toUpperCase().includes(senderName) || senderName.includes(String(t["ASC Name"] || "").replace("BE AND ", "")));
+                    let techCode = matchedTech ? matchedTech["Ship To Code"] : "";
+                    let techFullName = matchedTech ? matchedTech["ASC Name"] : `BE AND ${senderName}`;
+
+                    let stockDetail = getTechnicianActualStockCodeAndQty(techCode, partNo, cts);
+                    let finalPartNo = stockDetail.code || partNo;
+                    let stockQty = stockDetail.qty;
+
+                    let existsInDusum = db.dusum.some(d => String(d["İŞ EMRİ"]).trim() === String(jobOrder).trim() && String(d["PART NO"]).trim() === String(finalPartNo).trim());
+                    if (!existsInDusum) {
+                        db.dusum.unshift({
+                            TEKNİSYEN: techFullName,
+                            ŞUBE: techCode,
+                            "PART NO": finalPartNo,
+                            ADET: 1,
+                            "İŞ EMRİ": jobOrder,
+                            "CTS KODU": cts,
+                            TARİH: new Date().toLocaleDateString('tr-TR'),
+                            AÇIKLAMA: tanim,
+                            "STOK (I)": finalPartNo,
+                            "TEKNİSYEN STOĞU": stockQty
+                        });
+                    }
+                });
+
+                renderDusumRows(db.dusum);
+                updateTechnicianDropdown();
+                updateSummaryPanel();
+                saveToCloud();
+            }
+
+            showToast(`Mutabakat tamamlandı, eksikler eklendi ve buluta kaydedildi!`);
+        }
+
+        function addNewDusumRow() {
+            if(!checkAdminAuth()) return;
+            db.dusum.unshift({
+                TEKNİSYEN: "YENİ TEKNİSYEN",
+                ŞUBE: "",
+                "PART NO": "F-HA-AKS1001",
+                ADET: 1,
+                "İŞ EMRİ": "",
+                "CTS KODU": "",
+                TARİH: new Date().toLocaleDateString('tr-TR'),
+                AÇIKLAMA: "",
+                "STOK (I)": ""
+            });
+            renderDusumRows(db.dusum);
+            updateTechnicianDropdown();
+            updateSummaryPanel();
+            saveToCloud();
+            showToast("Yeni satır eklendi ve buluta kaydedildi.");
+        }
+
+        function deleteDusumRow(index) {
+            if(!checkAdminAuth()) return;
+            if(confirm("Bu satırı silmek istediğinize emin misiniz?")) {
+                db.dusum.splice(index, 1);
+                renderDusumRows(db.dusum);
+                updateTechnicianDropdown();
+                updateSummaryPanel();
+                saveToCloud();
+                showToast("Satır silindi ve buluta kaydedildi.");
+            }
+        }
+
+        function updateDusumCell(index, field, value) {
+            if(!checkAdminAuth()) return;
+            db.dusum[index][field] = value;
+            updateSummaryPanel();
+            saveToCloud();
+        }
+
+        function updateTechnicianDropdown() {
+            let select = document.getElementById('filterTeknisyen');
+            if(!select) return;
+            let currentVal = select.value;
+            select.innerHTML = '<option value="">👤 Tüm Teknisyenler</option>';
+            
+            let teknisyenler = [...new Set(db.dusum.map(d => d.TEKNİSYEN))].filter(Boolean).sort();
+            teknisyenler.forEach(t => {
+                select.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+            select.value = currentVal;
+        }
+
+        function updateSummaryPanel() {
+            let summaryContainer = document.getElementById('summaryContainer');
+            if(!summaryContainer) return;
+            if(!db.dusum.length) {
+                summaryContainer.innerHTML = '<span class="text-slate-400 italic">Veri bulunmuyor.</span>';
+                return;
+            }
+
+            let counts = {};
+            let processedItems = new Set();
+
+            db.dusum.forEach(item => {
+                let pNo = item["PART NO"] || "BİLİNMEYEN";
+                let jobOrder = String(item["İŞ EMRİ"] || "").trim();
+                let uniqueKeyCheck = jobOrder + "|" + pNo;
+
+                if (!processedItems.has(uniqueKeyCheck)) {
+                    processedItems.add(uniqueKeyCheck);
+                    let desc = item["AÇIKLAMA"] || pNo;
+                    let key = pNo + " (" + desc + ")";
+                    counts[key] = (counts[key] || 0) + 1;
+                }
+            });
+
+            summaryContainer.innerHTML = "";
+            Object.keys(counts).forEach(key => {
+                summaryContainer.innerHTML += `
+                    <div class="bg-white p-2 rounded-lg border border-indigo-100 shadow-sm flex flex-col justify-between">
+                        <span class="font-bold text-slate-700 truncate" title="${key}">${key}</span>
+                        <span class="text-indigo-600 font-extrabold text-xs mt-1">${counts[key]} Adet</span>
+                    </div>
+                `;
+            });
+        }
+
+        function toggleSummaryView() {
+            let c = document.getElementById('summaryContainer');
+            if(!c) return;
+            c.classList.toggle('max-h-36');
+            c.classList.toggle('max-h-96');
+        }
+
+        function extractAksCode(txt) {
+            let match = txt.match(/F-[A-Z0-9]+(?:-[A-Z0-9]+)*/i);
+            if(match) return match[0];
+            let match2 = txt.match(/AKS[0-9][A-Z0-9-]*/i);
+            if(match2) return match2[0];
+            return "";
+        }
+
+        function toggleSelectAllDusum(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.dusum-checkbox');
+            checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+        }
+
+        function renderDusumRows(dataList) {
+            let tbody = document.getElementById('bodyDusum');
+            let countEl = document.getElementById('recordCount');
+            if(!tbody) return;
+            tbody.innerHTML = "";
+            if(countEl) countEl.innerText = dataList.length;
+
+            if(!dataList.length) {
+                tbody.innerHTML = `<tr><td colspan="12" class="p-6 text-center text-slate-400">Kayıt bulunamadı.</td></tr>`;
+                return;
+            }
+
+            let isAdmin = currentUser && currentUser.role === 'admin';
+
+            dataList.forEach((item, originalIndex) => {
+                let currentStockDetail = getTechnicianActualStockCodeAndQty(item.ŞUBE, item["PART NO"], item["CTS KODU"]);
+                let displayPartNo = item["PART NO"] || currentStockDetail.code;
+                let displayStockCode = item["STOK (I)"] || currentStockDetail.code;
+                let displayStockQty = item["TEKNİSYEN STOĞU"] ?? currentStockDetail.qty;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-1.5 border text-center"><input type="checkbox" class="dusum-checkbox w-4 h-4" data-index="${originalIndex}"></td>
+                        <td class="p-1.5 border"><input type="text" value="${item.TEKNİSYEN || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'TEKNİSYEN', this.value)" class="w-full bg-transparent outline-none font-semibold truncate"></td>
+                        <td class="p-1.5 border"><input type="text" value="${item.ŞUBE || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'ŞUBE', this.value)" class="w-20 bg-transparent outline-none text-blue-600 font-semibold font-mono"></td>
+                        <td class="p-1.5 border"><input type="text" value="${displayPartNo}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'PART NO', this.value)" class="w-28 bg-transparent outline-none text-emerald-600 font-semibold font-mono"></td>
+                        <td class="p-1.5 border text-center font-bold">1</td>
+                        <td class="p-1.5 border"><input type="text" value="${item["İŞ EMRİ"] || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'İŞ EMRİ', this.value)" class="w-24 bg-transparent outline-none font-mono font-bold"></td>
+                        <td class="p-1.5 border"><input type="text" value="${item["CTS KODU"] || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'CTS KODU', this.value)" class="w-24 bg-transparent outline-none font-mono"></td>
+                        <td class="p-1.5 border"><input type="text" value="${cleanAndFormatDate(item.TARİH) || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'TARİH', this.value)" class="w-20 bg-transparent outline-none"></td>
+                        <td class="p-1.5 border"><input type="text" value="${item.AÇIKLAMA || ''}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'AÇIKLAMA', this.value)" class="w-36 bg-transparent outline-none truncate"></td>
+                        <td class="p-1.5 border"><input type="text" value="${displayStockCode}" ${!isAdmin ? 'disabled' : ''} onchange="updateDusumCell(${originalIndex}, 'STOK (I)', this.value)" class="w-28 bg-transparent outline-none font-bold text-slate-700 font-mono"></td>
+                        <td class="p-1.5 border text-center">
+                            ${isAdmin ? `<button onclick="deleteDusumRow(${originalIndex})" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-2 py-0.5 rounded text-[11px] font-bold transition">Sil</button>` : '-'}
+                        </td>
+                        <td class="p-1.5 border text-center font-extrabold text-indigo-700">${displayStockQty}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function filterDusumTable() {
+            let query = document.getElementById('searchDusum').value.toUpperCase();
+            let selectedTeknisyen = document.getElementById('filterTeknisyen').value;
+
+            let filtered = db.dusum.filter(row => {
+                let matchTeknisyen = !selectedTeknisyen || row.TEKNİSYEN === selectedTeknisyen;
+                let matchQuery = JSON.stringify(row).toUpperCase().includes(query);
+                return matchTeknisyen && matchQuery;
+            });
+            renderDusumRows(filtered);
+        }
+
+        function resetAllData() {
+            if(!checkAdminAuth()) return;
+            if(confirm("TÜM GÜNLÜK VERİLERİ sıfırlamak istiyor musunuz? (Not: Arşiv verileriniz ve klasörleriniz KORUNACAKTIR)")) {
+                db.gspn = [];
+                db.dusum = [];
+                db.whatsapp = [];
+                db.gspnstok = [];
+                saveToCloud();
+                document.getElementById('bodyGspn').innerHTML = '<tr><td colspan="10" class="p-4 text-center text-slate-400">Veri temizlendi.</td></tr>';
+                document.getElementById('bodyDusum').innerHTML = '<tr><td colspan="12" class="p-6 text-center text-slate-400">Henüz veri işlenmedi.</td></tr>';
+                document.getElementById('bodyTeknisyenStok').innerHTML = '<tr><td colspan="7" class="p-4 text-center text-slate-400">Arka planda GSPN stok dosyası yüklenmedi.</td></tr>';
+                document.getElementById('stokStatusText').innerText = "Stok dosyası yüklenmedi";
+                document.getElementById('stokStatusText').className = "text-xs font-semibold text-slate-400";
+                document.getElementById('bodyWhatsapp').innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400">Veri yok.</td></tr>';
+                document.getElementById('summaryContainer').innerHTML = '<span class="text-slate-400 italic">Veri bulunmuyor.</span>';
+                document.getElementById('filterTeknisyen').innerHTML = '<option value="">👤 Tüm Teknisyenler</option>';
+                document.getElementById('recordCount').innerText = "0";
+                document.getElementById('waInput').value = "";
+                showToast("Günlük veriler sıfırlandı, arşiv verileriniz korundu.");
+            }
+        }
+    </script>
+</body>
+</html>
